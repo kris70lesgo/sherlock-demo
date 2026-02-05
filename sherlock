@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -e
+
+INCIDENT_ID="INC-123"
+SERVICE="api-gateway"
+
+echo "🔍 Sherlock investigating incident $INCIDENT_ID for $SERVICE"
+echo
+
+# Collect evidence
+GIT_LOG="$(git log --oneline)"
+GIT_DIFF="$(git show HEAD)"
+APP_LOGS="$(cat evidence/app.log)"
+DEPLOYMENTS="$(cat evidence/deployments.json)"
+METRICS="$(cat evidence/metrics.json)"
+
+# Run Copilot investigation
+PROMPT="You are a senior Site Reliability Engineer performing a blameless post-mortem.
+
+Rules:
+- Base conclusions ONLY on the evidence provided
+- Distinguish causation from correlation
+- If uncertain, state uncertainty and assign confidence levels
+
+Incident:
+- ID: $INCIDENT_ID
+- Service: $SERVICE
+- Incident start time: 2026-02-12T11:16:00
+
+Git commits:
+$GIT_LOG
+
+Commit diff:
+$GIT_DIFF
+
+Deployment events:
+$DEPLOYMENTS
+
+Application logs:
+$APP_LOGS
+
+Metrics:
+$METRICS
+
+Tasks:
+1. Build a minute-by-minute timeline leading up to the incident
+2. Identify the PRIMARY root cause
+3. Identify any CONTRIBUTING factors
+4. Explicitly list NON-CAUSES that were considered and ruled out
+5. Identify the exact commit responsible (hash + message)
+6. Explain why this change caused the incident (causal chain)
+7. Identify detection gaps (what signals were missing or too late)
+8. Propose concrete remediation and prevention steps
+9. Assign confidence scores (0–100%) for your conclusions
+
+Output format (STRICT):
+
+# Incident Post-Mortem
+
+## Timeline
+- ...
+
+## Primary Root Cause
+...
+
+## Contributing Factors
+- ...
+
+## Non-Causes Ruled Out
+- ...
+
+## Evidence
+- ...
+
+## Detection & Prevention Gaps
+- ...
+
+## Remediation & Follow-ups
+- ...
+
+## Confidence
+Primary root cause confidence: X%"
+
+OUTPUT="reports/postmortem-$INCIDENT_ID.md"
+PROMPT_FILE="reports/copilot-prompt-$INCIDENT_ID.txt"
+mkdir -p reports
+
+# Save prompt for auditability
+cat <<EOF > "$PROMPT_FILE"
+$PROMPT
+EOF
+
+echo "🧠 Copilot prompt saved to $PROMPT_FILE"
+echo
+echo "🤖 Invoking GitHub Copilot CLI for incident correlation and RCA"
+echo "    • Inputs: git history, commit diff, logs, deployments, metrics"
+echo "    • Role: reasoning engine (timeline + root cause + remediation)"
+echo
+
+gh copilot -- -p "$PROMPT" | tee "$OUTPUT"
+
+echo
+echo "✅ GitHub Copilot CLI analysis complete"
+
+echo
+echo "📄 Post-mortem saved to $OUTPUT"

@@ -1,0 +1,5 @@
+2026-02-12T11:14:58 INFO  Starting api-gateway
+2026-02-12T11:15:02 INFO  Deployment version v1.1.0
+2026-02-12T11:16:10 WARN  High memory usage detected (85%)
+2026-02-12T11:16:42 ERROR Memory allocation failed
+2026-02-12T11:16:43 ERROR Worker process crashed

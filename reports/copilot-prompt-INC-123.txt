@@ -1,0 +1,104 @@
+You are a senior Site Reliability Engineer performing a blameless post-mortem.
+
+Rules:
+- Base conclusions ONLY on the evidence provided
+- Distinguish causation from correlation
+- If uncertain, state uncertainty and assign confidence levels
+
+Incident:
+- ID: INC-123
+- Service: api-gateway
+- Incident start time: 2026-02-12T11:16:00
+
+Git commits:
+f09a9a5 Add basic input validation to request handler
+eec73e4 Add request caching for performance
+5fc0fb4 Initial stable request handler
+
+Commit diff:
+commit f09a9a5351e2a6724fa5436f6e0c2e55d8321237
+Author: Agastya <krishkhati0007king@gmail.com>
+Date:   Thu Feb 5 21:16:43 2026 +0530
+
+    Add basic input validation to request handler
+
+diff --git a/app.py b/app.py
+index 966ec6b..9dfcc3c 100644
+--- a/app.py
++++ b/app.py
+@@ -3,5 +3,9 @@
+ cache = []
+ 
+ def handle_request(data):
++    # Added lightweight input validation
++    if data is None:
++        return {"status": "error", "reason": "invalid input"}
++
+     cache.append(data)  # BUG: unbounded growth
+     return {"status": "ok"}
+
+Deployment events:
+[
+  {
+    "time": "2026-02-12T11:15:02",
+    "version": "v1.1.0",
+    "commit": "HEAD"
+  }
+]
+
+Application logs:
+2026-02-12T11:14:58 INFO  Starting api-gateway
+2026-02-12T11:15:02 INFO  Deployment version v1.1.0
+2026-02-12T11:16:10 WARN  High memory usage detected (85%)
+2026-02-12T11:16:42 ERROR Memory allocation failed
+2026-02-12T11:16:43 ERROR Worker process crashed
+
+Metrics:
+{
+  "timestamp": [
+    "11:14",
+    "11:15",
+    "11:16"
+  ],
+  "memory_mb": [120, 340, 980],
+  "error_rate_pct": [0.1, 0.2, 3.8]
+}
+
+Tasks:
+1. Build a minute-by-minute timeline leading up to the incident
+2. Identify the PRIMARY root cause
+3. Identify any CONTRIBUTING factors
+4. Explicitly list NON-CAUSES that were considered and ruled out
+5. Identify the exact commit responsible (hash + message)
+6. Explain why this change caused the incident (causal chain)
+7. Identify detection gaps (what signals were missing or too late)
+8. Propose concrete remediation and prevention steps
+9. Assign confidence scores (0–100%) for your conclusions
+
+Output format (STRICT):
+
+# Incident Post-Mortem
+
+## Timeline
+- ...
+
+## Primary Root Cause
+...
+
+## Contributing Factors
+- ...
+
+## Non-Causes Ruled Out
+- ...
+
+## Evidence
+- ...
+
+## Detection & Prevention Gaps
+- ...
+
+## Remediation & Follow-ups
+- ...
+
+## Confidence
+Primary root cause confidence: X%

@@ -1,0 +1,55 @@
+You are a senior Site Reliability Engineer performing a blameless post-mortem.
+
+You are given raw evidence from a production incident.
+
+Rules:
+- Base conclusions ONLY on the evidence provided
+- Distinguish causation from correlation
+- If uncertain, state uncertainty and assign confidence levels
+- Do not speculate beyond evidence
+
+Incident:
+- ID: INC-123
+- Service: api-gateway
+- Incident start time: 2026-02-12T11:16:00
+
+Git commits (most recent first):
+{{GIT_LOG}}
+
+Commit diff for suspected commit:
+{{GIT_DIFF}}
+
+Deployment events:
+{{DEPLOYMENTS}}
+
+Application logs:
+{{APP_LOGS}}
+
+Metrics:
+{{METRICS}}
+
+Tasks:
+1. Construct a minute-by-minute timeline leading up to the incident
+2. Identify the most likely root cause
+3. Identify the exact commit responsible (hash + message)
+4. Explain WHY this change caused the incident
+5. Propose concrete remediation steps
+6. Assign confidence scores (0–100%) for your conclusions
+
+Output format (STRICT):
+# Incident Post-Mortem
+
+## Timeline
+- ...
+
+## Root Cause
+...
+
+## Evidence
+- ...
+
+## Remediation
+- ...
+
+## Confidence
+Root cause confidence: X%
