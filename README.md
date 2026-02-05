@@ -33,6 +33,21 @@ Copilot Sherlock uses GitHub Copilot CLI as the core reasoning engine. For each 
 - GitHub Copilot CLI performs cross-source correlation and RCA
 - Both the prompt and Copilot's post-mortem output are persisted for auditability
 
+### What Sherlock Does vs What Copilot CLI Does
+
+**Sherlock (evidence pipeline):**
+- Collects evidence from git, logs, deployments, metrics
+- Normalizes data into structured format
+- Orchestrates the investigation workflow
+- Persists artifacts (prompt + report)
+
+**GitHub Copilot CLI (reasoning engine):**
+- Correlates evidence across multiple sources
+- Performs causal chain analysis
+- Distinguishes root cause from contributing factors
+- Explicitly rules out non-causes
+- Generates structured post-mortem with confidence scores
+
 ## Demo Scenario
 
 This repo includes a controlled incident where a caching change introduces an unbounded memory leak. Sherlock correctly identifies the offending commit, explains the failure mechanism, and suggests remediation.

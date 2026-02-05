@@ -4,6 +4,8 @@ set -e
 INCIDENT_ID="INC-123"
 SERVICE="api-gateway"
 
+echo "ℹ️  Demo mode: using simulated incident data (INC-123)"
+echo
 echo "🔍 Sherlock investigating incident $INCIDENT_ID for $SERVICE"
 echo
 
