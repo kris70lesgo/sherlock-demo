@@ -1,0 +1,22 @@
+{
+  "service": "api-gateway",
+  "time_window": {
+    "start": "2026-02-04T00:00:00Z",
+    "end": "2026-02-12T23:59:00Z"
+  },
+  "repositories": [
+    "."
+  ],
+  "commit_window": {
+    "before": 10000,
+    "after": 5
+  },
+  "paths": [],
+  "log_policy": {
+    "min_severity": "WARN",
+    "include_components": ["api-gateway"]
+  },
+  "metric_policy": {
+    "include": ["memory_mb", "error_rate_pct"]
+  }
+}

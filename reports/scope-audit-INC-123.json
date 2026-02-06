@@ -1,0 +1,27 @@
+{
+  "scope_summary": {
+    "service": "api-gateway",
+    "time_window": "2026-02-04T00:00:00Z to 2026-02-12T23:59:00Z",
+    "paths": "all",
+    "commit_buffer": "-10000m / +5m"
+  },
+  "reduction_summary": {
+    "commits": {
+      "included": 3,
+      "excluded": 0
+    },
+    "logs": {
+      "included": 5,
+      "excluded": 0
+    },
+    "metrics": {
+      "included": 2,
+      "excluded": 0
+    }
+  },
+  "exclusion_reasons": [
+    "outside_commit_window",
+    "severity_below_threshold",
+    "metric_dimension_not_in_scope"
+  ]
+}

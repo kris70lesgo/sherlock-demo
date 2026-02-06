@@ -5,10 +5,11 @@ Copilot Sherlock is a CLI tool that performs automated incident investigation an
 ## What it does
 
 With a single command, Sherlock:
-- Analyzes recent git commits and diffs
-- Correlates deployments with logs and metrics
-- Identifies the most likely root cause
-- Generates a blameless post-mortem with confidence scores
+- **Phase 2**: Scopes evidence to incident time window (deployment-anchored commit narrowing)
+- **Phase 1**: Normalizes and validates evidence (timestamps, integrity checks)
+- **Phase 3**: Enforces hypothesis-based reasoning (enumeration → elimination → root cause)
+- Uses GitHub Copilot CLI for cross-source correlation and causal analysis
+- Generates enterprise-grade post-mortem with explicit confidence quantification
 
 ## Usage
 
@@ -42,16 +43,22 @@ Copilot Sherlock uses GitHub Copilot CLI as the core reasoning engine. For each 
 - Persists artifacts (prompt + report)
 
 **GitHub Copilot CLI (reasoning engine):**
+- Enumerates 3-5 competing hypotheses across different categories (Application/Infra/Traffic/Config/Dependency)
+- Evaluates evidence FOR and AGAINST each hypothesis
+- Explicitly eliminates ruled-out hypotheses with reasoning
 - Correlates evidence across multiple sources
 - Performs causal chain analysis
 - Distinguishes root cause from contributing factors
-- Explicitly rules out non-causes
-- Generates structured post-mortem with confidence scores
+- Generates structured post-mortem with confidence discipline (total ≤100%)
 
 ## Demo Scenario
 
 This repo includes a controlled incident where a caching change introduces an unbounded memory leak. Sherlock correctly identifies the offending commit, explains the failure mechanism, and suggests remediation.
 
-## Disclaimer
+**Phase 3 Reasoning Quality**: See [PHASE3-SUMMARY.md](PHASE3-SUMMARY.md) for details on hypothesis-based reasoning implementation.
 
-This demo uses simulated logs, metrics, and deployments. The architecture is designed to support real production data sources.
+## Architecture
+
+See [DESIGN.md](DESIGN.md) for system architecture, responsibility separation, and production roadmap.
+
+See [LIMITATIONS.md](LIMITATIONS.md) for demo scope constraints and engineering honesty about what's simulated vs production-ready.

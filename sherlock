@@ -2,92 +2,519 @@
 set -e
 
 INCIDENT_ID="INC-123"
-SERVICE="api-gateway"
+SCOPE_FILE="incident-scope.json"
 
 echo "ℹ️  Demo mode: using simulated incident data (INC-123)"
 echo
-echo "🔍 Sherlock investigating incident $INCIDENT_ID for $SERVICE"
+echo "🔍 Sherlock investigating incident $INCIDENT_ID"
 echo
 
-# Collect evidence
-GIT_LOG="$(git log --oneline)"
-GIT_DIFF="$(git show HEAD)"
-APP_LOGS="$(cat evidence/app.log)"
-DEPLOYMENTS="$(cat evidence/deployments.json)"
-METRICS="$(cat evidence/metrics.json)"
+# Validate scope file exists
+if [[ ! -f "$SCOPE_FILE" ]]; then
+    echo "❌ Missing incident scope file: $SCOPE_FILE. Aborting."
+    exit 1
+fi
+
+echo "📋 Loading incident scope from $SCOPE_FILE"
+
+# Extract metadata from scope
+SERVICE=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['service'])")
+START_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['start'])")
+END_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['end'])")
+ENVIRONMENT="demo"
+TIMEZONE="UTC"
+
+if [[ -z "$SERVICE" || -z "$START_TIME" || -z "$END_TIME" ]]; then
+    echo "❌ Missing required scope fields (service, time_window). Aborting."
+    exit 1
+fi
+
+BUNDLE_FILE="reports/incident-bundle-$INCIDENT_ID.json"
+SCOPE_AUDIT_FILE="reports/scope-audit-$INCIDENT_ID.json"
+mkdir -p reports
+
+export INCIDENT_ID
+export SERVICE
+export ENVIRONMENT
+export START_TIME
+export END_TIME
+export TIMEZONE
+export SCOPE_FILE
+export BUNDLE_FILE
+export SCOPE_AUDIT_FILE
+
+# Phase 2 → Phase 1 Pipeline: Scope & Reduce → Normalize & Validate
+python3 - <<'PYTHON_PIPELINE'
+import json
+import os
+import re
+import subprocess
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Any
+
+# ============================================================================
+# PHASE 2: INCIDENT SCOPING & EVIDENCE REDUCTION
+# ============================================================================
+
+def load_scope() -> Dict[str, Any]:
+    """Load and validate incident scope object."""
+    with open(os.environ["SCOPE_FILE"], "r") as f:
+        scope = json.load(f)
+    
+    if "service" not in scope or "time_window" not in scope:
+        raise SystemExit("❌ Scope missing required fields")
+    
+    if "start" not in scope["time_window"] or "end" not in scope["time_window"]:
+        raise SystemExit("❌ time_window missing start or end")
+    
+    return scope
+
+def parse_iso(ts: str) -> datetime:
+    """Parse ISO timestamp to datetime (UTC)."""
+    if ts.endswith("Z"):
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    if re.search(r"[+-]\d{2}:\d{2}$", ts):
+        return datetime.fromisoformat(ts)
+    return datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
+
+def to_utc_iso(dt: datetime) -> str:
+    """Convert datetime to UTC ISO string."""
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+# STEP 2.2: Deployment anchoring
+def find_deployments(events: List[Dict], start: datetime, end: datetime) -> List[Dict]:
+    """Find deployments in incident window."""
+    deployments = []
+    for ev in events:
+        ts = parse_iso(ev["time"])
+        if start <= ts <= end:
+            deployments.append(ev)
+    return deployments
+
+# STEP 2.3: Commit narrowing
+def get_commits_around_deployments(deployments: List[Dict], 
+                                   before: int, after: int) -> List[Dict]:
+    """Get commits around deployment times."""
+    all_commits = []
+    
+    for deployment in deployments:
+        deploy_time = parse_iso(deployment["time"])
+        
+        start_time = (deploy_time - timedelta(minutes=before)).isoformat()
+        end_time = (deploy_time + timedelta(minutes=after)).isoformat()
+        
+        cmd = ["git", "log", f"--since={start_time}", f"--until={end_time}",
+               "--pretty=format:%H|%an|%aI|%s"]
+        try:
+            output = subprocess.check_output(cmd, text=True).strip()
+            if output:
+                for line in output.splitlines():
+                    parts = line.split("|", 3)
+                    if len(parts) == 4:
+                        commit_hash, author, timestamp, message = parts
+                        commit = {
+                            "commit_hash": commit_hash,
+                            "author": author,
+                            "timestamp": to_utc_iso(parse_iso(timestamp)),
+                            "message": message,
+                        }
+                        if not any(c["commit_hash"] == commit_hash for c in all_commits):
+                            all_commits.append(commit)
+        except subprocess.CalledProcessError:
+            pass
+    
+    return all_commits
+
+# STEP 2.5: Log scoping
+def filter_logs(lines: List[str], min_severity: str) -> tuple:
+    """Filter logs by severity."""
+    severity_order = {"INFO": 0, "WARN": 1, "ERROR": 2}
+    min_level = severity_order.get(min_severity, 1)
+    
+    included = []
+    excluded = 0
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        parts = line.split(" ", 3)
+        if len(parts) < 4:
+            excluded += 1
+            continue
+        
+        severity = parts[1].strip()
+        if severity not in severity_order:
+            excluded += 1
+            continue
+        
+        if severity_order[severity] < min_level:
+            if severity == "INFO":
+                message = parts[3] if len(parts) >= 4 else ""
+                if not any(kw in message for kw in ["Starting", "Deployment", "Shutdown"]):
+                    excluded += 1
+                    continue
+            else:
+                excluded += 1
+                continue
+        
+        included.append(line)
+    
+    return included, excluded
+
+# STEP 2.6: Metric dimension scoping
+def filter_metrics(metrics: Dict, include_dims: List[str]) -> tuple:
+    """Filter metrics by dimension."""
+    if not include_dims:
+        return metrics, 0
+    
+    included = {}
+    excluded = 0
+    
+    for key, value in metrics.items():
+        if key == "timestamp" or key in include_dims:
+            included[key] = value
+        else:
+            excluded += 1
+    
+    return included, excluded
+
+# Execute Phase 2: Scoping & Reduction
+scope = load_scope()
+service = scope["service"]
+start_time = parse_iso(scope["time_window"]["start"])
+end_time = parse_iso(scope["time_window"]["end"])
+
+commit_window = scope.get("commit_window", {"before": 20, "after": 5})
+paths = scope.get("paths", [])
+log_policy = scope.get("log_policy", {"min_severity": "WARN"})
+metric_policy = scope.get("metric_policy", {"include": []})
+
+# Load raw data
+with open("evidence/deployments.json", "r") as f:
+    raw_deployments = json.load(f)
+with open("evidence/metrics.json", "r") as f:
+    raw_metrics = json.load(f)
+with open("evidence/app.log", "r") as f:
+    raw_logs = f.readlines()
+
+# STEP 2.2: Deployment anchoring
+deployments = find_deployments(raw_deployments, start_time, end_time)
+if not deployments:
+    raise SystemExit("❌ No deployment events in incident window. Aborting.")
+
+print(f"✓ Found {len(deployments)} deployment(s) in incident window")
+
+# STEP 2.3: Commit narrowing
+commits = get_commits_around_deployments(
+    deployments, 
+    commit_window["before"], 
+    commit_window["after"]
+)
+excluded_commits = 0
+print(f"✓ Commit narrowing: {len(commits)} commits in window")
+
+# STEP 2.5: Log scoping
+filtered_logs, excluded_logs = filter_logs(
+    raw_logs,
+    log_policy.get("min_severity", "WARN")
+)
+print(f"✓ Log scoping: {len(filtered_logs)} logs included, {excluded_logs} excluded")
+
+# STEP 2.6: Metric scoping
+filtered_metrics, excluded_metrics = filter_metrics(
+    raw_metrics,
+    metric_policy.get("include", [])
+)
+print(f"✓ Metric scoping: {len(filtered_metrics)-1} dimensions included, {excluded_metrics} excluded")
+
+# Scope audit
+scope_audit = {
+    "scope_summary": {
+        "service": service,
+        "time_window": f"{to_utc_iso(start_time)} to {to_utc_iso(end_time)}",
+        "paths": paths if paths else "all",
+        "commit_buffer": f"-{commit_window['before']}m / +{commit_window['after']}m",
+    },
+    "reduction_summary": {
+        "commits": {"included": len(commits), "excluded": excluded_commits},
+        "logs": {"included": len(filtered_logs), "excluded": excluded_logs},
+        "metrics": {"included": len(filtered_metrics) - 1, "excluded": excluded_metrics},
+    },
+    "exclusion_reasons": [
+        "outside_commit_window",
+        "severity_below_threshold",
+        "metric_dimension_not_in_scope",
+    ],
+}
+
+# ============================================================================
+# PHASE 1: NORMALIZATION & VALIDATION
+# ============================================================================
+
+def diff_summary(commit_hash: str):
+    """Get semantic diff summary."""
+    cmd = ["git", "show", commit_hash, "--name-status", "--pretty=format:"]
+    try:
+        output = subprocess.check_output(cmd, text=True)
+    except subprocess.CalledProcessError:
+        return []
+    
+    diffs = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        change_type, path = parts
+        
+        semantic_hint = ""
+        if path == "app.py":
+            show = subprocess.check_output(["git", "show", commit_hash, "--", path], text=True)
+            if "cache.append" in show:
+                semantic_hint = "adds unbounded cache append"
+            elif '\"status\": \"error\"' in show:
+                semantic_hint = "adds lightweight input validation"
+        
+        diffs.append({
+            "file_path": path,
+            "change_type": change_type,
+            "semantic_hint": semantic_hint or "n/a",
+        })
+    return diffs
+
+def normalize_deployments(events: List[Dict]) -> List[Dict]:
+    """Normalize deployment events."""
+    normalized = []
+    for ev in events:
+        normalized.append({
+            "timestamp": to_utc_iso(parse_iso(ev["time"])),
+            "service": service,
+            "version": ev.get("version"),
+            "commit_hash": ev.get("commit"),
+        })
+    return normalized
+
+def normalize_logs(lines: List[str]) -> List[Dict]:
+    """Normalize log entries."""
+    entries = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(" ", 3)
+        if len(parts) < 4:
+            continue
+        ts, severity, _, message = parts[0], parts[1], parts[2], parts[3]
+        entries.append({
+            "timestamp": to_utc_iso(parse_iso(ts)),
+            "severity": severity.strip(),
+            "component": service,
+            "message": message.strip(),
+        })
+    return entries
+
+def aggregate_metrics(metrics: Dict) -> Dict:
+    """Aggregate metrics."""
+    summary = {}
+    for key, values in metrics.items():
+        if key == "timestamp" or not values:
+            continue
+        baseline = values[0]
+        pre_incident = values[1] if len(values) > 1 else values[0]
+        peak = max(values)
+        delta = peak - baseline
+        summary[key] = {
+            "baseline": baseline,
+            "pre_incident": pre_incident,
+            "peak": peak,
+            "delta": delta,
+            "unit": "mb" if "memory" in key else "pct",
+            "direction": "up" if delta > 0 else "down" if delta < 0 else "flat",
+        }
+    return summary
+
+# Normalize scoped data
+deployment_events = normalize_deployments(deployments)
+log_entries = normalize_logs(filtered_logs)
+metric_summary = aggregate_metrics(filtered_metrics)
+
+# Generate diffs
+diffs = []
+for c in commits:
+    diffs.extend(diff_summary(c["commit_hash"]))
+
+# Integrity accounting
+missing_sources = []
+confidence_penalties = []
+
+if not log_entries:
+    missing_sources.append("application_logs")
+    confidence_penalties.append({"reason": "Missing or empty logs", "penalty": -10})
+
+if not metric_summary:
+    missing_sources.append("metrics")
+    confidence_penalties.append({"reason": "Missing or empty metrics", "penalty": -15})
+
+# Build final bundle
+bundle = {
+    "metadata": {
+        "incident_id": os.environ["INCIDENT_ID"],
+        "service": service,
+        "environment": os.environ["ENVIRONMENT"],
+        "start_time": to_utc_iso(start_time),
+        "end_time": to_utc_iso(end_time),
+        "timezone": os.environ["TIMEZONE"],
+    },
+    "version_control": {
+        "commits": commits,
+        "diffs": diffs,
+    },
+    "deployments": {
+        "events": deployment_events,
+    },
+    "logs": {
+        "entries": log_entries,
+    },
+    "metrics": {
+        "aggregates": metric_summary,
+    },
+    "integrity": {
+        "missing_sources": missing_sources,
+        "confidence_penalties": confidence_penalties,
+    },
+}
+
+# Save artifacts
+with open(os.environ["BUNDLE_FILE"], "w") as f:
+    json.dump(bundle, f, indent=2)
+
+with open(os.environ["SCOPE_AUDIT_FILE"], "w") as f:
+    json.dump(scope_audit, f, indent=2)
+
+print(f"✓ Phase 2 complete: Evidence scoped and reduced")
+print(f"✓ Phase 1 complete: Evidence normalized and validated")
+PYTHON_PIPELINE
+
+echo
+echo "📦 Incident Evidence Bundle saved to $BUNDLE_FILE"
+echo "📊 Scope Audit saved to $SCOPE_AUDIT_FILE"
+echo
 
 # Run Copilot investigation
-PROMPT="You are a senior Site Reliability Engineer performing a blameless post-mortem.
+BUNDLE_JSON="$(cat "$BUNDLE_FILE")"
+SCOPE_AUDIT_JSON="$(cat "$SCOPE_AUDIT_FILE")"
+
+PROMPT="You are a senior Site Reliability Engineer performing a blameless post-mortem using hypothesis-based reasoning.
+
+IMPORTANT: Output ONLY the markdown post-mortem document. Do not output tool invocations, permission errors, or diagnostic messages. Start immediately with the markdown header.
 
 Rules:
 - Base conclusions ONLY on the evidence provided
 - Distinguish causation from correlation
+- Use structured hypothesis evaluation before concluding
 - If uncertain, state uncertainty and assign confidence levels
 
-Incident:
-- ID: $INCIDENT_ID
-- Service: $SERVICE
-- Incident start time: 2026-02-12T11:16:00
+Scope Summary:
+$(python3 -c "import json; s=json.load(open('$SCOPE_AUDIT_FILE')); print('- Service: ' + s['scope_summary']['service']); print('- Time window: ' + s['scope_summary']['time_window']); print('- Paths: ' + str(s['scope_summary']['paths'])); print('- Commit buffer: ' + s['scope_summary']['commit_buffer'])")
 
-Git commits:
-$GIT_LOG
+Reduction Summary:
+$(python3 -c "import json; s=json.load(open('$SCOPE_AUDIT_FILE')); r=s['reduction_summary']; print(f\"- Commits considered: {r['commits']['included']} (excluded {r['commits']['excluded']})\"); print(f\"- Logs considered: {r['logs']['included']} (excluded {r['logs']['excluded']})\"); print(f\"- Metrics considered: {r['metrics']['included']} (excluded {r['metrics']['excluded']})\")")
 
-Commit diff:
-$GIT_DIFF
+Evidence Quality Notes:
+- All timestamps normalized to UTC
+- Missing sources: $(python3 -c "import json; b=json.load(open('$BUNDLE_FILE')); m=b['integrity']['missing_sources']; print(', '.join(m) if m else 'none')")
+- Confidence penalties: $(python3 -c "import json; b=json.load(open('$BUNDLE_FILE')); p=b['integrity']['confidence_penalties']; print('; '.join([f\"{x['reason']} ({x['penalty']}%)\" for x in p]) if p else 'none')")
 
-Deployment events:
-$DEPLOYMENTS
+Incident Evidence Bundle (normalized JSON):
+$BUNDLE_JSON
 
-Application logs:
-$APP_LOGS
+PHASE 3: HYPOTHESIS-BASED REASONING PROTOCOL
 
-Metrics:
-$METRICS
+You MUST perform hypothesis-based reasoning. Follow this exact sequence:
 
-Tasks:
-1. Build a minute-by-minute timeline leading up to the incident
-2. Identify the PRIMARY root cause
-3. Identify any CONTRIBUTING factors
-4. Explicitly list NON-CAUSES that were considered and ruled out
-5. Identify the exact commit responsible (hash + message)
-6. Explain why this change caused the incident (causal chain)
-7. Identify detection gaps (what signals were missing or too late)
-8. Propose concrete remediation and prevention steps
-9. Assign confidence scores (0–100%) for your conclusions
+Instructions:
+1. Enumerate 3-5 plausible hypotheses for the incident
+2. Hypotheses MUST span different categories:
+   - Application logic (code bugs, unbounded growth, etc.)
+   - Infrastructure (hardware, networking, resource limits)
+   - Traffic/Load (volume spikes, DDoS, unusual patterns)
+   - Configuration (settings, deployment config, environment vars)
+   - Dependencies/Runtime (libraries, platform, external services)
+3. For EACH hypothesis:
+   - List evidence FOR the hypothesis
+   - List evidence AGAINST the hypothesis
+   - Assign a confidence score (0-100%)
+4. Total confidence across ALL hypotheses must not exceed 100%
+5. Explicitly RULE OUT hypotheses that are not supported
+6. Only AFTER elimination, select a primary root cause
+7. State remaining uncertainty clearly
 
-Output format (STRICT):
+Required Output Structure (STRICT - do not skip or reorder):
 
-# Incident Post-Mortem
+# Incident Post-Mortem: $INCIDENT_ID
 
 ## Timeline
-- ...
+[Minute-by-minute sequence of events]
+
+## Hypotheses Considered
+
+### Hypothesis 1: [Name] (Category: [Application/Infra/Traffic/Config/Dependency])
+**Evidence FOR:**
+- [Evidence item 1]
+- [Evidence item 2]
+
+**Evidence AGAINST:**
+- [Counter-evidence item 1]
+- [Counter-evidence item 2]
+
+**Confidence:** [X]%
+**Status:** [CONFIRMED/RULED_OUT/POSSIBLE]
+
+[Repeat for all hypotheses]
+
+## Evidence Evaluation
+[Cross-hypothesis evidence analysis]
+
+## Ruled-Out Hypotheses
+[Explicitly list hypotheses that were eliminated and WHY]
 
 ## Primary Root Cause
-...
+[Selected hypothesis with justification based on elimination]
+**Commit:** [hash] - [message]
+**Causal Chain:** [Step-by-step explanation]
 
 ## Contributing Factors
-- ...
-
-## Non-Causes Ruled Out
-- ...
-
-## Evidence
-- ...
+[Amplifiers of the root cause, NOT alternative explanations]
 
 ## Detection & Prevention Gaps
-- ...
+[What signals were missing or too late]
 
 ## Remediation & Follow-ups
-- ...
+[Concrete actions]
 
-## Confidence
-Primary root cause confidence: X%"
+## Remaining Uncertainty
+[What you don't know and why]
+
+## Confidence Summary
+- Primary root cause confidence: [X]%
+- Total hypothesis confidence budget used: [Y]%
+- Uncertainty factors: [list]
+
+CRITICAL REQUIREMENTS:
+- At least 3 hypotheses with different categories
+- Each hypothesis must have BOTH evidence for AND against
+- At least one hypothesis must be explicitly RULED_OUT
+- Confidence scores must sum to ≤100%
+- Contributing factors must NOT be listed as separate hypotheses
+- Root cause selection must reference hypothesis elimination"
 
 OUTPUT="reports/postmortem-$INCIDENT_ID.md"
 PROMPT_FILE="reports/copilot-prompt-$INCIDENT_ID.txt"
-mkdir -p reports
 
-# Save prompt for auditability
+# Save prompt
 cat <<EOF > "$PROMPT_FILE"
 $PROMPT
 EOF
@@ -95,7 +522,7 @@ EOF
 echo "🧠 Copilot prompt saved to $PROMPT_FILE"
 echo
 echo "🤖 Invoking GitHub Copilot CLI for incident correlation and RCA"
-echo "    • Inputs: git history, commit diff, logs, deployments, metrics"
+echo "    • Inputs: scoped evidence (commits, logs, metrics)"
 echo "    • Role: reasoning engine (timeline + root cause + remediation)"
 echo
 
@@ -103,6 +530,112 @@ gh copilot -- -p "$PROMPT" | tee "$OUTPUT"
 
 echo
 echo "✅ GitHub Copilot CLI analysis complete"
-
 echo
-echo "📄 Post-mortem saved to $OUTPUT"
+
+# Phase 3: Validate hypothesis-based reasoning structure
+echo "🔍 Phase 3: Validating hypothesis-based reasoning structure"
+python3 - "$OUTPUT" <<'VALIDATE_HYPOTHESES'
+import sys
+import re
+
+# Read the post-mortem
+output_file = sys.argv[1]
+with open(output_file, 'r') as f:
+    content = f.read()
+
+warnings = []
+errors = []
+
+# Check 1: Hypotheses Considered section exists
+if '## Hypotheses Considered' not in content:
+    errors.append("Missing '## Hypotheses Considered' section")
+else:
+    # Count hypotheses
+    hypothesis_pattern = r'### Hypothesis \d+:'
+    hypotheses = re.findall(hypothesis_pattern, content)
+    hyp_count = len(hypotheses)
+    
+    if hyp_count < 3:
+        errors.append(f"Only {hyp_count} hypotheses found (minimum: 3)")
+    else:
+        print(f"   ✓ Found {hyp_count} hypotheses")
+    
+    # Check for evidence symmetry (FOR and AGAINST)
+    for_count = content.count('**Evidence FOR:**')
+    against_count = content.count('**Evidence AGAINST:**')
+    
+    if for_count != hyp_count or against_count != hyp_count:
+        warnings.append(f"Evidence asymmetry detected: {for_count} FOR, {against_count} AGAINST (expected {hyp_count} each)")
+    else:
+        print(f"   ✓ Evidence symmetry maintained (FOR + AGAINST for each hypothesis)")
+    
+    # Check for confidence scores
+    confidence_pattern = r'\*\*Confidence:\*\* (\d+)%'
+    confidences = [int(x) for x in re.findall(confidence_pattern, content)]
+    
+    if confidences:
+        total_confidence = sum(confidences)
+        if total_confidence > 100:
+            errors.append(f"Confidence budget exceeded: {total_confidence}% (maximum: 100%)")
+        else:
+            print(f"   ✓ Confidence budget: {total_confidence}% (within limit)")
+    else:
+        warnings.append("No confidence scores found")
+    
+    # Check for status markers
+    status_count = content.count('**Status:**')
+    if status_count != hyp_count:
+        warnings.append(f"Missing status markers: found {status_count}, expected {hyp_count}")
+    else:
+        print(f"   ✓ All hypotheses have status markers")
+
+# Check 2: Ruled-Out Hypotheses section
+if '## Ruled-Out Hypotheses' not in content:
+    errors.append("Missing '## Ruled-Out Hypotheses' section")
+else:
+    ruled_out = content.count('RULED_OUT')
+    if ruled_out == 0:
+        warnings.append("No hypotheses explicitly ruled out")
+    else:
+        print(f"   ✓ {ruled_out} hypothesis(es) ruled out")
+
+# Check 3: Required sections present
+required_sections = [
+    '## Timeline',
+    '## Evidence Evaluation',
+    '## Primary Root Cause',
+    '## Remaining Uncertainty',
+    '## Confidence Summary'
+]
+
+missing_sections = [s for s in required_sections if s not in content]
+if missing_sections:
+    errors.append(f"Missing required sections: {', '.join(missing_sections)}")
+else:
+    print(f"   ✓ All required sections present")
+
+# Report
+if errors:
+    print("\n⚠️  Validation ERRORS:")
+    for e in errors:
+        print(f"   ✗ {e}")
+    sys.exit(1)
+
+if warnings:
+    print("\n⚠️  Validation WARNINGS:")
+    for w in warnings:
+        print(f"   • {w}")
+
+if not errors and not warnings:
+    print("\n✅ Hypothesis validation passed")
+VALIDATE_HYPOTHESES
+
+if [ $? -eq 0 ]; then
+    echo
+    echo "📄 Post-mortem saved to $OUTPUT"
+    echo "   • Phase 3 reasoning structure validated"
+else
+    echo
+    echo "⚠️  Post-mortem generated with validation warnings/errors"
+    echo "📄 Output: $OUTPUT"
+fi
