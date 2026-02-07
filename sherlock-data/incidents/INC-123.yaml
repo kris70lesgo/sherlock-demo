@@ -1,0 +1,41 @@
+# Incident Index Record: INC-123
+
+incident_id: INC-123
+timestamp: 2026-02-07T16:37:31Z
+
+service: api-gateway
+environment: demo
+
+final_root_cause:
+  summary: "Unbounded Cache Growth"
+  category: Application
+
+decision:
+  type: ACCEPTED
+  reviewer_role: SRE
+  final_confidence: 85
+
+ai_vs_human:
+  ai_confidence: 85
+  human_confidence: 85
+  delta: 0
+
+signals:
+  - memory_growth
+  - error_rate_spike
+  - latency_degradation
+  - crash_loop
+
+hypotheses:
+  total: 5
+  ruled_out: 4
+
+remediation:
+  promised:
+    []
+  status:
+    []
+
+artifacts:
+  review_record: reports/review-record-INC-123.yaml
+  postmortem: reports/postmortem-INC-123.md

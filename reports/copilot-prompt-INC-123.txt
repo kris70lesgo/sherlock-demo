@@ -15,7 +15,7 @@ Scope Summary:
 - Commit buffer: -10000m / +5m
 
 Reduction Summary:
-- Commits considered: 4 (excluded 0)
+- Commits considered: 5 (excluded 0)
 - Logs considered: 5 (excluded 0)
 - Metrics considered: 2 (excluded 0)
 
@@ -36,6 +36,12 @@ Incident Evidence Bundle (normalized JSON):
   },
   "version_control": {
     "commits": [
+      {
+        "commit_hash": "6285f786522ba383ab574da4abf4b71a4befd51b",
+        "author": "Agastya",
+        "timestamp": "2026-02-07T07:57:58Z",
+        "message": "Enhance incident analysis and governance features in Sherlock"
+      },
       {
         "commit_hash": "a25c05b38cf7db56894992a88a1387d3d74dc062",
         "author": "Agastya",
@@ -62,6 +68,51 @@ Incident Evidence Bundle (normalized JSON):
       }
     ],
     "diffs": [
+      {
+        "file_path": "PHASE4-SUMMARY.md",
+        "change_type": "A",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "README.md",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "app.py",
+        "change_type": "M",
+        "semantic_hint": "adds unbounded cache append"
+      },
+      {
+        "file_path": "reports/copilot-prompt-INC-123.txt",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/incident-bundle-INC-123.json",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/postmortem-INC-123.md",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/review-record-INC-123.yaml",
+        "change_type": "A",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/scope-audit-INC-123.json",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "sherlock",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
       {
         "file_path": "README.md",
         "change_type": "M",

@@ -1,6 +1,233 @@
 #!/usr/bin/env bash
 set -e
 
+# Phase 5: Check for history command first
+if [ "$1" = "history" ]; then
+    shift  # Remove 'history' from args
+    
+    # Parse filters
+    SERVICE_FILTER=""
+    CATEGORY_FILTER=""
+    DECISION_FILTER=""
+    CONFIDENCE_FILTER=""
+    SIGNAL_FILTER=""
+    SHOW_CALIBRATION=false
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --service)
+                SERVICE_FILTER="$2"
+                shift 2
+                ;;
+            --category)
+                CATEGORY_FILTER="$2"
+                shift 2
+                ;;
+            --decision)
+                DECISION_FILTER="$2"
+                shift 2
+                ;;
+            --confidence-below)
+                CONFIDENCE_FILTER="$2"
+                shift 2
+                ;;
+            --signal)
+                SIGNAL_FILTER="$2"
+                shift 2
+                ;;
+            --calibration)
+                SHOW_CALIBRATION=true
+                shift
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Export filters for Python script
+    export SERVICE_FILTER
+    export CATEGORY_FILTER
+    export DECISION_FILTER
+    export CONFIDENCE_FILTER
+    export SIGNAL_FILTER
+    export SHOW_CALIBRATION
+    
+    # Run history query
+    python3 - <<'HISTORY_QUERY'
+import os
+import sys
+import json
+import re
+from pathlib import Path
+
+data_dir = Path("sherlock-data/incidents")
+if not data_dir.exists():
+    print("No incident history found (sherlock-data/incidents/ does not exist)")
+    sys.exit(0)
+
+# Simple YAML parser for our specific format
+def parse_incident_yaml(file_path):
+    """Parse incident YAML into dict"""
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    
+    incident = {}
+    current_section = None
+    current_subsection = None
+    
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped or line_stripped.startswith('#'):
+            continue
+        
+        # Top-level key
+        if not line.startswith(' ') and ':' in line:
+            key, value = line.split(':', 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            
+            if value:
+                incident[key] = value
+            else:
+                current_section = key
+                incident[key] = {}
+        
+        # Second level (2 spaces)
+        elif line.startswith('  ') and not line.startswith('    ') and ':' in line:
+            key, value = line.strip().split(':', 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            
+            if current_section:
+                if value:
+                    incident[current_section][key] = value
+                else:
+                    current_subsection = key
+                    incident[current_section][key] = []
+        
+        # Third level (4 spaces) - list items
+        elif line.startswith('    -'):
+            value = line.strip()[1:].strip().strip('"')
+            if current_section and current_subsection:
+                incident[current_section][current_subsection].append(value)
+    
+    return incident
+
+# Load filters from environment
+service_filter = os.getenv("SERVICE_FILTER", "")
+category_filter = os.getenv("CATEGORY_FILTER", "")
+decision_filter = os.getenv("DECISION_FILTER", "")
+confidence_filter = os.getenv("CONFIDENCE_FILTER", "")
+signal_filter = os.getenv("SIGNAL_FILTER", "")
+show_calibration = os.getenv("SHOW_CALIBRATION", "false") == "true"
+
+# Load all incident records
+incidents = []
+for yaml_file in sorted(data_dir.glob("*.yaml")):
+    try:
+        record = parse_incident_yaml(yaml_file)
+        incidents.append(record)
+    except Exception as e:
+        print(f"⚠️  Skipping corrupt file {yaml_file.name}: {e}", file=sys.stderr)
+
+if not incidents:
+    print("No incidents found in history")
+    sys.exit(0)
+
+# Apply filters
+filtered = incidents
+
+if service_filter:
+    filtered = [i for i in filtered if i.get('service') == service_filter]
+
+if category_filter:
+    filtered = [i for i in filtered if i.get('final_root_cause', {}).get('category') == category_filter]
+
+if decision_filter:
+    filtered = [i for i in filtered if i.get('decision', {}).get('type') == decision_filter]
+
+if confidence_filter:
+    threshold = int(confidence_filter)
+    filtered = [i for i in filtered if int(i.get('decision', {}).get('final_confidence', 100)) < threshold]
+
+if signal_filter:
+    filtered = [i for i in filtered if signal_filter in i.get('signals', {})]
+
+# Display results
+if show_calibration:
+    # Confidence calibration analysis
+    ai_confidences = []
+    human_confidences = []
+    deltas = []
+    
+    for i in incidents:
+        if 'ai_vs_human' in i:
+            try:
+                ai_conf = int(i['ai_vs_human'].get('ai_confidence', 0))
+                human_conf = int(i['ai_vs_human'].get('human_confidence', 0))
+                delta = int(i['ai_vs_human'].get('delta', 0))
+                ai_confidences.append(ai_conf)
+                human_confidences.append(human_conf)
+                deltas.append(delta)
+            except:
+                pass
+    
+    if ai_confidences:
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("Confidence Calibration Analysis")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print(f"AI confidence average:     {sum(ai_confidences)/len(ai_confidences):.1f}%")
+        print(f"Human confidence average:  {sum(human_confidences)/len(human_confidences):.1f}%")
+        print(f"Mean delta:                {sum(deltas)/len(deltas):+.1f}%")
+        print(f"Total incidents:           {len(incidents)}")
+        print()
+        
+        # Distribution
+        mean_delta = sum(deltas) / len(deltas)
+        if mean_delta > 5:
+            print("⚠️  AI systematically overconfident")
+        elif mean_delta < -5:
+            print("⚠️  AI systematically underconfident")
+        else:
+            print("✓ AI confidence well-calibrated")
+    else:
+        print("No calibration data available")
+else:
+    # Standard history display
+    if not filtered:
+        print("No incidents match filters")
+        sys.exit(0)
+    
+    print(f"{'ID':<12} | {'Service':<15} | {'Category':<12} | {'Conf':<4} | {'Decision':<10} | {'Date':<10}")
+    print("─" * 85)
+    
+    for incident in filtered:
+        inc_id = incident.get('incident_id', 'unknown')
+        service = incident.get('service', 'unknown')[:15]
+        category = incident.get('final_root_cause', {}).get('category', 'unknown')[:12]
+        confidence = incident.get('decision', {}).get('final_confidence', '0')
+        decision = incident.get('decision', {}).get('type', 'unknown')[:10]
+        timestamp = incident.get('timestamp', '')[:10]
+        
+        print(f"{inc_id:<12} | {service:<15} | {category:<12} | {confidence:<4}% | {decision:<10} | {timestamp:<10}")
+    
+    print()
+    print(f"Total: {len(filtered)} incident(s)")
+    
+    # Signal pattern if requested
+    if signal_filter:
+        print()
+        print(f"Incidents with signal '{signal_filter}':")
+        for incident in filtered:
+            cause = incident.get('final_root_cause', {}).get('summary', 'unknown')
+            print(f"  • {incident.get('incident_id', 'unknown')}: {cause}")
+HISTORY_QUERY
+    
+    exit 0
+fi
+
 INCIDENT_ID="INC-123"
 SCOPE_FILE="incident-scope.json"
 
@@ -925,6 +1152,212 @@ echo "   • Review Record: $REVIEW_RECORD"
 echo
 if [ "$APPROVAL_STATUS" = "FINALIZED" ]; then
     echo "✓ Investigation complete and finalized"
+    
+    # Phase 5: Write to Institutional Memory (only if finalized)
+    echo
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "💾 Phase 5: Writing to Organizational Memory"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    
+    INCIDENT_STORE="sherlock-data/incidents"
+    mkdir -p "$INCIDENT_STORE"
+    
+    INCIDENT_FILE="$INCIDENT_STORE/$INCIDENT_ID.yaml"
+    
+    # Check for duplicate (append-only protection)
+    if [ -f "$INCIDENT_FILE" ]; then
+        echo "⚠️  Incident $INCIDENT_ID already exists in memory"
+        echo "   File: $INCIDENT_FILE"
+        echo "   Phase 5 write aborted (append-only guarantee)"
+    else
+        # Extract incident index record
+        python3 - "$REVIEW_RECORD" "$OUTPUT" "$SCOPE_AUDIT_FILE" "$INCIDENT_FILE" <<'EXTRACT_INDEX'
+import sys
+import json
+import re
+from datetime import datetime
+
+review_record_path = sys.argv[1]
+postmortem_path = sys.argv[2]
+scope_audit_path = sys.argv[3]
+output_path = sys.argv[4]
+
+# Load review record (YAML format - parse manually to avoid dependency)
+with open(review_record_path, 'r') as f:
+    lines = f.readlines()
+
+def parse_yaml_value(lines, key):
+    """Simple YAML parser for our specific format"""
+    for i, line in enumerate(lines):
+        if line.strip().startswith(f'{key}:'):
+            value = line.split(':', 1)[1].strip().strip('"')
+            return value
+    return None
+
+def parse_nested_yaml_value(lines, parent_key, child_key):
+    """Parse nested YAML values"""
+    in_section = False
+    for line in lines:
+        if line.strip().startswith(f'{parent_key}:'):
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith('  ') and child_key in line:
+                value = line.split(':', 1)[1].strip().strip('"')
+                return value
+            if not line.startswith('  '):
+                break
+    return None
+
+incident_id = parse_yaml_value(lines, 'incident_id')
+review_time = parse_yaml_value(lines, 'review_time')
+reviewer_role = parse_nested_yaml_value(lines, 'reviewer', 'role')
+ai_confidence = parse_nested_yaml_value(lines, 'ai_proposal', 'confidence')
+final_confidence = parse_nested_yaml_value(lines, 'human_decision', 'final_confidence')
+final_root_cause = parse_nested_yaml_value(lines, 'human_decision', 'final_root_cause')
+decision_type = parse_nested_yaml_value(lines, 'human_decision', 'decision')
+
+# Load scope audit
+with open(scope_audit_path, 'r') as f:
+    scope_audit = json.load(f)
+
+service = scope_audit['scope_summary']['service']
+
+# Load postmortem for signal extraction
+with open(postmortem_path, 'r') as f:
+    postmortem = f.read()
+
+# Extract signals from postmortem
+signals = []
+if 'memory' in postmortem.lower() and 'growth' in postmortem.lower():
+    signals.append('memory_growth')
+if 'error rate' in postmortem.lower() or 'error_rate' in postmortem.lower():
+    signals.append('error_rate_spike')
+if 'latency' in postmortem.lower() or 'timeout' in postmortem.lower():
+    signals.append('latency_degradation')
+if 'crash' in postmortem.lower():
+    signals.append('crash_loop')
+
+# Extract category from root cause
+category = "Application"  # Default
+if 'cache' in final_root_cause.lower() or 'code' in final_root_cause.lower():
+    category = "Application"
+elif 'config' in final_root_cause.lower() or 'deployment' in final_root_cause.lower():
+    category = "Config"
+elif 'infra' in final_root_cause.lower() or 'hardware' in final_root_cause.lower():
+    category = "Infra"
+elif 'dependency' in final_root_cause.lower() or 'library' in final_root_cause.lower():
+    category = "Dependency"
+elif 'traffic' in final_root_cause.lower() or 'load' in final_root_cause.lower():
+    category = "Traffic"
+
+# Count hypotheses from postmortem
+hypothesis_count = len(re.findall(r'### Hypothesis \d+:', postmortem))
+ruled_out_count = len(re.findall(r'\*\*Status:\*\* RULED_OUT', postmortem))
+
+# Extract remediation promises from postmortem
+remediation_section = ""
+if '## Remediation' in postmortem:
+    remediation_section = postmortem.split('## Remediation')[1].split('##')[0]
+
+promised_actions = []
+for line in remediation_section.split('\n'):
+    if line.strip().startswith('-') or re.match(r'^\d+\.', line.strip()):
+        action = re.sub(r'^[-\d\.]+\s*', '', line.strip())
+        if action and len(action) > 10:  # Filter out short lines
+            promised_actions.append(action[:100])  # Limit length
+
+ai_conf = int(ai_confidence) if ai_confidence else 0
+human_conf = int(final_confidence) if final_confidence else 0
+delta = human_conf - ai_conf
+
+# Build incident index record
+incident_record = f"""# Incident Index Record: {incident_id}
+
+incident_id: {incident_id}
+timestamp: {review_time}
+
+service: {service}
+environment: demo
+
+final_root_cause:
+  summary: "{final_root_cause}"
+  category: {category}
+
+decision:
+  type: {decision_type}
+  reviewer_role: {reviewer_role}
+  final_confidence: {human_conf}
+
+ai_vs_human:
+  ai_confidence: {ai_conf}
+  human_confidence: {human_conf}
+  delta: {delta}
+
+signals:
+"""
+
+for signal in signals:
+    incident_record += f"  - {signal}\n"
+
+if not signals:
+    incident_record += "  []\n"
+
+incident_record += f"""
+hypotheses:
+  total: {hypothesis_count}
+  ruled_out: {ruled_out_count}
+
+remediation:
+  promised:
+"""
+
+for action in promised_actions[:5]:  # Limit to 5 actions
+    incident_record += f'    - "{action}"\n'
+
+if not promised_actions:
+    incident_record += "    []\n"
+
+incident_record += f"""  status:
+"""
+
+for action in promised_actions[:5]:
+    incident_record += f'''    - action: "{action}"
+      completed: false
+'''
+
+if not promised_actions:
+    incident_record += "    []\n"
+
+incident_record += f"""
+artifacts:
+  review_record: {review_record_path}
+  postmortem: {postmortem_path}
+"""
+
+# Write to institutional memory
+with open(output_path, 'w') as f:
+    f.write(incident_record)
+
+print(f"✓ Incident indexed: {output_path}")
+print(f"  • Category: {category}")
+print(f"  • Signals: {', '.join(signals) if signals else 'none'}")
+print(f"  • Hypotheses: {hypothesis_count} total, {ruled_out_count} ruled out")
+print(f"  • Confidence delta: {delta:+d}%")
+EXTRACT_INDEX
+        
+        if [ $? -eq 0 ]; then
+            echo
+            echo "✅ Organizational memory updated"
+            echo "   • Append-only guarantee preserved"
+            echo "   • No influence on future reasoning"
+            echo "   • Query with: ./sherlock history"
+        else
+            echo "❌ Phase 5 write failed"
+        fi
+    fi
 else
     echo "⚠️  Review marked as DRAFT - finalization required"
+    echo "   Phase 5 skipped (institutional memory requires finalization)"
 fi

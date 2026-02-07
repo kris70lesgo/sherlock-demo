@@ -1,0 +1,38 @@
+# Incident Index Record: INC-126
+
+incident_id: INC-126
+timestamp: 2026-02-18T16:45:33Z
+
+service: payment-service
+environment: demo
+
+final_root_cause:
+  summary: "Dependency version mismatch"
+  category: Dependency
+
+decision:
+  type: REJECTED
+  reviewer_role: Maintainer
+  final_confidence: 0
+
+ai_vs_human:
+  ai_confidence: 65
+  human_confidence: 0
+  delta: -65
+
+signals:
+  - crash_loop
+
+hypotheses:
+  total: 3
+  ruled_out: 2
+
+remediation:
+  promised:
+    []
+  status:
+    []
+
+artifacts:
+  review_record: reports/review-record-INC-126.yaml
+  postmortem: reports/postmortem-INC-126.md

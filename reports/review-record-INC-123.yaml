@@ -3,27 +3,27 @@
 incident_id: INC-123
 
 reviewer:
-  name: "David Lee"
+  name: "Frank Wilson"
   role: "Incident Commander"
-  identifier: "david@example.com"
+  identifier: "frank@example.com"
 
-review_time: 2026-02-07T07:42:18Z
+review_time: 2026-02-07T16:39:30Z
 
 ai_proposal:
-  primary_root_cause: "Unbounded Cache Growth"
-  confidence: 75
+  primary_root_cause: "Unbounded Cache Growth in Application Code"
+  confidence: 85
   ruled_out_count: 4
 
 human_decision:
-  decision: REJECTED
-  final_root_cause: "Analysis rejected - see notes"
-  final_confidence: 0
+  decision: ACCEPTED
+  final_root_cause: "Unbounded Cache Growth in Application Code"
+  final_confidence: 85
 
 overrides:
   []
 
 notes:
-  - "REJECTED: Evidence insufficient - need heap dump and traffic metrics"
+  []
 
 approval:
   status: FINALIZED

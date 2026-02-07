@@ -1,0 +1,46 @@
+# Incident Index Record: INC-124
+
+incident_id: INC-124
+timestamp: 2026-02-10T14:22:15Z
+
+service: auth-service
+environment: demo
+
+final_root_cause:
+  summary: "Database connection pool exhaustion"
+  category: Config
+
+decision:
+  type: MODIFIED
+  reviewer_role: Incident Commander
+  final_confidence: 70
+
+ai_vs_human:
+  ai_confidence: 80
+  human_confidence: 70
+  delta: -10
+
+signals:
+  - latency_degradation
+  - error_rate_spike
+
+hypotheses:
+  total: 4
+  ruled_out: 3
+
+remediation:
+  promised:
+    - "Increase connection pool size to 100"
+    - "Add connection pool monitoring"
+    - "Implement circuit breaker"
+  status:
+    - action: "Increase connection pool size to 100"
+      completed: true
+    - action: "Add connection pool monitoring"
+      completed: false
+    - action: "Implement circuit breaker"
+      completed: false
+
+artifacts:
+  review_record: reports/review-record-INC-124.yaml
+  postmortem: reports/postmortem-INC-124.md

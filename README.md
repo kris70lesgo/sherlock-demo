@@ -9,9 +9,10 @@ With a single command, Sherlock:
 - **Phase 1**: Normalizes and validates evidence (timestamps, integrity checks)
 - **Phase 3**: Enforces hypothesis-based reasoning (enumeration → elimination → root cause)
 - **Phase 4**: Human review & decision accountability (AI proposes, humans decide, system records)
+- **Phase 5**: Organizational memory & learning (append-only incident knowledge store)
 - Uses GitHub Copilot CLI for cross-source correlation and causal analysis
 - Generates enterprise-grade post-mortem with explicit confidence quantification
-- Creates complete audit trail with governance backbone (review records)
+- Creates complete audit trail with governance backbone (review records + institutional memory)
 
 ## Usage
 
@@ -57,7 +58,22 @@ Copilot Sherlock uses GitHub Copilot CLI as the core reasoning engine. For each 
 
 This repo includes a controlled incident where a caching change introduces an unbounded memory leak. Sherlock correctly identifies the offending commit, explains the failure mechanism, and suggests remediation.
 
-**Phase 3 Reasoning Quality**: See [PHASE3-SUMMARY.md](PHASE3-SUMMARY.md) for details on hypothesis-based reasoning implementation.
+**Phase 3 Reasoning Quality**: See [PHASE3-SUMMARY.md](PHASE3-SUMMARY.md) for hypothesis-based reasoning implementation.
+
+**Phase 4 Governance**: See [PHASE4-SUMMARY.md](PHASE4-SUMMARY.md) for human accountability model.
+
+**Phase 5 Institutional Memory**: See [PHASE5-SUMMARY.md](PHASE5-SUMMARY.md) for organizational learning without AI feedback loops.
+
+## Query Incident History
+
+```bash
+./sherlock history                           # All incidents
+./sherlock history --service api-gateway     # By service
+./sherlock history --category Application    # By root cause category
+./sherlock history --confidence-below 70     # Low confidence incidents
+./sherlock history --signal memory_growth    # By signal pattern
+./sherlock history --calibration             # AI confidence calibration
+```
 
 **Phase 4 Governance**: See [PHASE4-SUMMARY.md](PHASE4-SUMMARY.md) for human-in-the-loop decision accountability and review record schema.
 

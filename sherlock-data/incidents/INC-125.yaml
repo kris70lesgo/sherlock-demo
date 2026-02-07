@@ -1,0 +1,42 @@
+# Incident Index Record: INC-125
+
+incident_id: INC-125
+timestamp: 2026-02-14T09:15:42Z
+
+service: api-gateway
+environment: demo
+
+final_root_cause:
+  summary: "Traffic spike from bot activity"
+  category: Traffic
+
+decision:
+  type: ACCEPTED
+  reviewer_role: SRE
+  final_confidence: 90
+
+ai_vs_human:
+  ai_confidence: 85
+  human_confidence: 90
+  delta: +5
+
+signals:
+  - error_rate_spike
+
+hypotheses:
+  total: 5
+  ruled_out: 4
+
+remediation:
+  promised:
+    - "Implement rate limiting per IP"
+    - "Add bot detection"
+  status:
+    - action: "Implement rate limiting per IP"
+      completed: false
+    - action: "Add bot detection"
+      completed: false
+
+artifacts:
+  review_record: reports/review-record-INC-125.yaml
+  postmortem: reports/postmortem-INC-125.md
