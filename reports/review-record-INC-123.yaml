@@ -1,0 +1,36 @@
+# Review Record: INC-123
+
+incident_id: INC-123
+
+reviewer:
+  name: "David Lee"
+  role: "Incident Commander"
+  identifier: "david@example.com"
+
+review_time: 2026-02-07T07:42:18Z
+
+ai_proposal:
+  primary_root_cause: "Unbounded Cache Growth"
+  confidence: 75
+  ruled_out_count: 4
+
+human_decision:
+  decision: REJECTED
+  final_root_cause: "Analysis rejected - see notes"
+  final_confidence: 0
+
+overrides:
+  []
+
+notes:
+  - "REJECTED: Evidence insufficient - need heap dump and traffic metrics"
+
+approval:
+  status: FINALIZED
+
+# Artifacts
+artifacts:
+  ai_postmortem: reports/postmortem-INC-123.md
+  evidence_bundle: reports/incident-bundle-INC-123.json
+  scope_audit: reports/scope-audit-INC-123.json
+  copilot_prompt: reports/copilot-prompt-INC-123.txt

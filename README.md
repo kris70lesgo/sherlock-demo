@@ -8,8 +8,10 @@ With a single command, Sherlock:
 - **Phase 2**: Scopes evidence to incident time window (deployment-anchored commit narrowing)
 - **Phase 1**: Normalizes and validates evidence (timestamps, integrity checks)
 - **Phase 3**: Enforces hypothesis-based reasoning (enumeration → elimination → root cause)
+- **Phase 4**: Human review & decision accountability (AI proposes, humans decide, system records)
 - Uses GitHub Copilot CLI for cross-source correlation and causal analysis
 - Generates enterprise-grade post-mortem with explicit confidence quantification
+- Creates complete audit trail with governance backbone (review records)
 
 ## Usage
 
@@ -57,8 +59,21 @@ This repo includes a controlled incident where a caching change introduces an un
 
 **Phase 3 Reasoning Quality**: See [PHASE3-SUMMARY.md](PHASE3-SUMMARY.md) for details on hypothesis-based reasoning implementation.
 
+**Phase 4 Governance**: See [PHASE4-SUMMARY.md](PHASE4-SUMMARY.md) for human-in-the-loop decision accountability and review record schema.
+
 ## Architecture
 
 See [DESIGN.md](DESIGN.md) for system architecture, responsibility separation, and production roadmap.
 
 See [LIMITATIONS.md](LIMITATIONS.md) for demo scope constraints and engineering honesty about what's simulated vs production-ready.
+
+## Complete Artifact Trail
+
+After investigation, Sherlock generates:
+- `incident-bundle-INC-123.json` - Normalized evidence (Phase 1)
+- `scope-audit-INC-123.json` - Scoping decisions (Phase 2)
+- `copilot-prompt-INC-123.txt` - AI reasoning input (Phase 3)
+- `postmortem-INC-123.md` - AI-generated analysis (Phase 3)
+- `review-record-INC-123.yaml` - Human decision & accountability (Phase 4)
+
+**Nothing is overwritten. Nothing is hidden. Complete forensic trail.**

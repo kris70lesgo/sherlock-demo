@@ -15,7 +15,7 @@ Scope Summary:
 - Commit buffer: -10000m / +5m
 
 Reduction Summary:
-- Commits considered: 3 (excluded 0)
+- Commits considered: 4 (excluded 0)
 - Logs considered: 5 (excluded 0)
 - Metrics considered: 2 (excluded 0)
 
@@ -37,6 +37,12 @@ Incident Evidence Bundle (normalized JSON):
   "version_control": {
     "commits": [
       {
+        "commit_hash": "a25c05b38cf7db56894992a88a1387d3d74dc062",
+        "author": "Agastya",
+        "timestamp": "2026-02-06T14:00:37Z",
+        "message": "feat: Implement Phase 3 of Copilot Sherlock with structured hypothesis evaluation"
+      },
+      {
         "commit_hash": "7dd642087bbf86b3364a1d575cacd446e7a2869e",
         "author": "Agastya",
         "timestamp": "2026-02-05T16:16:39Z",
@@ -56,6 +62,41 @@ Incident Evidence Bundle (normalized JSON):
       }
     ],
     "diffs": [
+      {
+        "file_path": "README.md",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "incident-scope.json",
+        "change_type": "A",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/copilot-prompt-INC-123.txt",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/incident-bundle-INC-123.json",
+        "change_type": "A",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/postmortem-INC-123.md",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "reports/scope-audit-INC-123.json",
+        "change_type": "A",
+        "semantic_hint": "n/a"
+      },
+      {
+        "file_path": "sherlock",
+        "change_type": "M",
+        "semantic_hint": "n/a"
+      },
       {
         "file_path": "DESIGN.md",
         "change_type": "A",

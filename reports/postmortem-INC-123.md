@@ -2,219 +2,257 @@
 
 ## Timeline
 
-**2026-02-05 15:46:43 UTC** - Commit f09a9a5 merged: "Add basic input validation to request handler" (includes unbounded cache append in app.py)
+**2026-02-05T15:46:43Z** - Commit f09a9a5 deployed: "Add basic input validation to request handler"
 
-**2026-02-12 11:14:58 UTC** - api-gateway service starting
+**2026-02-12T11:14:58Z** - Service api-gateway starting in demo environment
 
-**2026-02-12 11:15:02 UTC** - Deployment v1.1.0 completed (commit HEAD)
+**2026-02-12T11:15:02Z** - Deployment v1.1.0 confirmed (commit HEAD)
 
-**2026-02-12 11:16:10 UTC** - First memory warning detected at 85% utilization (~340MB pre-incident baseline)
+**2026-02-12T11:16:10Z** (+1m 8s) - High memory usage warning triggered at 85% (estimated ~850MB based on subsequent crash at 980MB)
 
-**2026-02-12 11:16:42 UTC** - Memory allocation failure (peak memory: 980MB, +860MB delta from baseline)
+**2026-02-12T11:16:42Z** (+1m 40s) - Memory allocation failure reported
 
-**2026-02-12 11:16:43 UTC** - Process crash, error rate spiked to 3.8% (from 0.1% baseline)
+**2026-02-12T11:16:43Z** (+1m 41s) - Process crashed due to allocation failure
 
-**Total elapsed time from deployment to crash:** 1 minute 41 seconds
+**Duration:** Service survived 1 minute 45 seconds post-deployment before fatal crash
 
 ## Hypotheses Considered
 
-### Hypothesis 1: Unbounded Cache Accumulation (Category: Application Logic)
+### Hypothesis 1: Unbounded Cache Growth (Category: Application)
 
 **Evidence FOR:**
-- Diff semantic hint explicitly indicates "adds unbounded cache append" in app.py
-- Memory growth pattern shows 7.2x increase from baseline (120MB → 980MB) in under 2 minutes
-- Rapid, continuous memory growth is characteristic of unbounded data structure accumulation
-- Deployment timing (v1.1.0 at 11:15:02) directly precedes memory spike (11:16:10), indicating code-triggered issue
-- Commit f09a9a5 modified app.py on Feb 5, deployed Feb 12 - timing aligns with code change deployment
+- Semantic hint in version control explicitly states: "adds unbounded cache append" in app.py
+- Memory increased 860MB (717% above baseline) in under 2 minutes
+- Memory growth trajectory: 120MB baseline → 340MB pre-incident → 980MB peak
+- Rapid memory exhaustion pattern consistent with append-only data structure
+- No backpressure or eviction logic implied by "unbounded" descriptor
 
 **Evidence AGAINST:**
-- Only 1 minute 41 seconds elapsed - extremely rapid growth for typical cache accumulation scenarios
-- No explicit log messages about cache size or eviction failures
-- Error message "allocation failed" is generic and doesn't confirm cache-specific issue
+- Extremely rapid growth (860MB in ~100 seconds) would require ~8.6MB/second append rate
+- Traffic patterns not provided - unclear if request volume supports this growth rate
+- No explicit cache-related error messages in logs
 
 **Confidence:** 75%  
 **Status:** CONFIRMED (Primary Root Cause)
 
-### Hypothesis 2: Traffic Spike Overwhelming Resources (Category: Traffic/Load)
+---
+
+### Hypothesis 2: Traffic Spike Overwhelming Service (Category: Traffic/Load)
 
 **Evidence FOR:**
-- Memory exhaustion occurred rapidly after deployment, which could indicate high request volume
-- Error rate increased 38x (0.1% → 3.8%), suggesting load-related strain
-- Allocation failure could result from processing excessive concurrent requests
+- Error rate increased from 0.1% baseline to 3.8% peak (38x increase)
+- Memory exhaustion could result from request backlog accumulation
+- Deployment timing coincides with incident start
 
 **Evidence AGAINST:**
-- No log entries indicating unusual traffic patterns, connection spikes, or request volume anomalies
-- Memory growth of 860MB in 92 seconds (9.3MB/sec) is too steep for normal traffic-induced growth
-- Baseline memory (120MB) to peak (980MB) suggests structural issue rather than transient load
-- Code change (unbounded cache append) provides alternative explanation with stronger evidence
-- No deployment of auto-scaling, rate limiting, or other load-management changes mentioned
+- Memory growth pattern is exponential/linear, not sawtooth (typical of request queue buildup/drain cycles)
+- No "connection refused", "queue full", or "timeout" messages in logs
+- Memory delta (860MB) far exceeds typical per-request memory footprint
+- Incident occurred immediately after deployment, not during known traffic peaks
+- No mention of traffic metrics (requests/second, connection count) in evidence
 
 **Confidence:** 5%  
-**Status:** RULED_OUT
+**Status:** RULED_OUT (insufficient supporting evidence, timeline mismatch)
 
-### Hypothesis 3: Memory Leak in Runtime/Platform (Category: Dependencies/Runtime)
+---
 
-**Evidence FOR:**
-- Continuous memory growth without corresponding cleanup suggests leak behavior
-- Allocation failure indicates exhaustion of available heap space
-- Platform-level leaks can manifest rapidly under certain workload conditions
-
-**Evidence AGAINST:**
-- Code change (app.py with unbounded cache) immediately precedes incident, suggesting application-level cause
-- No evidence of runtime version change or platform update in deployment events
-- Memory growth rate (9.3MB/sec) is unusually aggressive for typical platform leaks
-- No indication of similar issues in other services sharing the runtime environment
-- Timeline shows immediate correlation with code deployment, not gradual degradation
-
-**Confidence:** 3%  
-**Status:** RULED_OUT
-
-### Hypothesis 4: Insufficient Memory Limits in Deployment Config (Category: Configuration)
+### Hypothesis 3: Memory Limit Misconfiguration (Category: Configuration)
 
 **Evidence FOR:**
-- Service crashed with "allocation failed" error, which can occur when hitting configured memory limits
-- Deployment event (v1.1.0) could have included configuration changes
-- Rapid crash suggests hard resource boundary
+- Service crashed with "allocation failed" - could indicate hitting configured limit
+- Deployment v1.1.0 may have included configuration changes
+- No graceful degradation or memory pressure handling observed
 
 **Evidence AGAINST:**
-- Memory grew from 120MB baseline to 980MB - if limit was misconfigured too low, baseline wouldn't have been 120MB
-- Configuration issue would typically manifest as immediate crash or stable constrained operation, not accelerating growth
-- Error occurred 1m41s after deployment, not immediately, suggesting accumulation rather than static misconfiguration
-- Code change (unbounded cache) provides causal mechanism for memory growth, configuration alone doesn't explain growth rate
-- No evidence in deployment metadata of memory limit changes
+- Log message "High memory usage detected (85%)" implies monitoring thresholds exist
+- Crash occurred at 980MB, suggesting limit is ~1GB (not obviously misconfigured for a gateway service)
+- Memory growth trend shows unconstrained increase, not oscillation around a limit
+- No "OOMKilled", "cgroup limit reached", or platform-level termination messages
+- Configuration misconfiguration would not explain WHY memory grew 860MB in 100 seconds
 
-**Confidence:** 2%  
-**Status:** RULED_OUT
+**Confidence:** 10%  
+**Status:** RULED_OUT (does not explain memory growth causation)
 
-### Hypothesis 5: Request Validation Logic Introducing Per-Request Memory Retention (Category: Application Logic)
+---
+
+### Hypothesis 4: Dependency Memory Leak (Category: Dependencies/Runtime)
 
 **Evidence FOR:**
-- Commit message explicitly mentions "Add basic input validation to request handler"
-- Validation logic could inadvertently retain request data/context in memory
-- Timing aligns: code change Feb 5, deployed Feb 12, crash immediately follows deployment
-- Semantic hint "unbounded cache append" suggests validation results or request data being cached
+- Memory leaks can cause gradual memory exhaustion
+- Pre-incident memory (340MB) already elevated above 120MB baseline
 
 **Evidence AGAINST:**
-- This is effectively a subcategory of Hypothesis 1 (unbounded cache) rather than distinct root cause
-- Evidence points to cache accumulation mechanism rather than validation logic specifically
-- Functionally indistinguishable from general unbounded cache hypothesis
+- Memory growth rate (8.6MB/second) too rapid for typical gradual leak
+- Semantic hint "adds unbounded cache append" directly implicates application code, not dependency
+- Incident triggered immediately after deployment with code change, not gradual degradation
+- No dependency version changes mentioned in commit messages
+- No garbage collection thrashing or runtime errors in logs
 
-**Confidence:** 15% (subsumed into Hypothesis 1)  
-**Status:** POSSIBLE (but redundant with H1)
+**Confidence:** 5%  
+**Status:** RULED_OUT (timeline and semantic hint point to application logic)
+
+---
+
+### Hypothesis 5: Host-Level Resource Contention (Category: Infrastructure)
+
+**Evidence FOR:**
+- Memory pressure could result from multiple processes competing for resources
+- Pre-incident memory elevation (340MB vs 120MB baseline) could indicate external pressure
+
+**Evidence AGAINST:**
+- Incident isolated to api-gateway service only
+- No infrastructure alerts or co-located service failures mentioned
+- Memory growth correlates precisely with service start time, not external events
+- "allocation failed" error message indicates in-process limit, not system-wide exhaustion
+- Deployment event timing rules out pre-existing host contention
+
+**Confidence:** 5%  
+**Status:** RULED_OUT (no cross-service impact or infrastructure alerts)
+
+---
 
 ## Evidence Evaluation
 
-**Strong causal indicators:**
-1. **Code-level semantic hint:** The diff annotation "adds unbounded cache append" is the most direct evidence, explicitly identifying the problematic pattern
-2. **Temporal correlation:** Deployment of code change (11:15:02) → memory warning (11:16:10, 68 seconds later) → crash (11:16:42, 100 seconds later) shows clear causal sequence
-3. **Memory growth signature:** 7.2x growth in 92 seconds (9.3MB/second sustained) is characteristic of per-request unbounded accumulation with moderate-to-high traffic
+**Temporal Correlation Analysis:**
+- Critical code change (app.py with "unbounded cache append") committed 2026-02-05
+- Incident manifested immediately upon deployment 2026-02-12 (within 2 minutes)
+- No intermediate deployments or configuration changes documented
+- Causal chain: Code Change → Deployment → Immediate Memory Growth → Crash
 
-**Weak correlations:**
-- Error rate increase (3.8%) is an effect of memory exhaustion, not a root cause
-- "allocation failed" error is a symptom, not diagnostic of specific cause
-- High memory warning (85%) served as leading indicator but provides no causal information
+**Memory Growth Pattern:**
+- Rate: 860MB growth in ~100 seconds = 8.6MB/second
+- Trajectory: Exponential or linear unbounded growth, not cyclic
+- Threshold breach: 85% warning → crash within 33 seconds
+- Pattern consistent with: Append-only data structure with no eviction policy
 
-**Eliminated factors:**
-- No traffic anomaly evidence (Hypothesis 2 ruled out)
-- No infrastructure/runtime changes (Hypothesis 3 ruled out)  
-- No configuration limit evidence (Hypothesis 4 ruled out)
+**Log Signal Analysis:**
+- Progression: INFO (startup) → WARN (memory) → ERROR (allocation) → ERROR (crash)
+- No cache eviction, garbage collection, or memory recovery attempts logged
+- Single-threaded failure cascade (no partial degradation)
+
+**Cross-Hypothesis Fit:**
+- Hypothesis 1 (Unbounded Cache): Explains timing, rate, trajectory, semantic hint ✓
+- Hypothesis 2 (Traffic): Does not explain 8.6MB/sec growth or immediate timing ✗
+- Hypothesis 3 (Configuration): Addresses symptom (crash), not cause (growth) ✗
+- Hypothesis 4 (Dependency): Contradicts semantic hint and timeline ✗
+- Hypothesis 5 (Infrastructure): No supporting cross-service evidence ✗
+
+---
 
 ## Ruled-Out Hypotheses
 
-**Traffic Spike (H2):** Eliminated due to absence of traffic anomaly indicators in logs, implausibility of 9.3MB/sec growth from traffic alone, and presence of stronger code-change explanation. Confidence reduced from potential 20% to 5%.
+1. **Traffic Spike (H2):** No traffic metrics provided, memory pattern inconsistent with request queuing, incident timing tied to deployment not traffic event.
 
-**Platform Memory Leak (H3):** Eliminated due to immediate correlation with application code deployment, absence of runtime version changes, and code-level evidence (unbounded cache) providing sufficient explanation. Residual 3% confidence accounts for potential runtime contribution to growth rate.
+2. **Memory Limit Misconfiguration (H3):** Does not explain causation of memory growth; 1GB limit is reasonable for gateway service; no platform-level termination signals.
 
-**Deployment Configuration (H4):** Eliminated because memory grew dynamically rather than hitting static limit immediately, and baseline memory (120MB) indicates limit was not artificially low. Configuration may have been inadequate but wasn't the triggering cause. Residual 2% confidence.
+3. **Dependency Memory Leak (H4):** Semantic hint directly implicates application code; growth rate too rapid for gradual leak; no dependency changes in commits.
+
+4. **Host Resource Contention (H5):** No cross-service impact, infrastructure alerts, or system-level memory exhaustion indicators; timing excludes pre-existing contention.
+
+---
 
 ## Primary Root Cause
 
-**Hypothesis 1: Unbounded Cache Accumulation in Application Code**
+**Hypothesis:** Unbounded Cache Growth (Application Logic Bug)
 
-**Commit:** f09a9a5351e2a6724fa5436f6e0c2e55d8321237 - "Add basic input validation to request handler"
+**Commit:** f09a9a5351e2a6724fa5436f6e0c2e55d8321237  
+**Message:** "Add basic input validation to request handler"  
+**File:** app.py  
+**Semantic Hint:** "adds unbounded cache append"
 
 **Causal Chain:**
-1. Code change introduced unbounded cache append operation in app.py (semantic hint confirms)
-2. Deployment v1.1.0 on Feb 12 at 11:15:02 activated the modified code path
-3. Each incoming request triggered cache append without eviction/size limit
-4. Cache grew continuously at ~9.3MB/second under production traffic load
-5. After 68 seconds, memory usage reached 85% (340MB), triggering warning
-6. After 100 seconds total, memory peaked at 980MB, exhausting available heap
-7. Allocation failure occurred at 11:16:42, followed by process crash at 11:16:43
+1. Code change introduced append-only cache in app.py without eviction policy
+2. Every incoming request (or validation result) appended to in-memory cache
+3. Cache grew at ~8.6MB/second rate (likely caching large validation payloads or serialized request data)
+4. Within 100 seconds, cache consumed 860MB beyond baseline
+5. Memory allocator failed at 980MB (approaching container/process limit)
+6. Process terminated due to allocation failure
 
-**Mechanistic explanation:** The input validation logic (added in commit f09a9a5) appended validation results, request metadata, or derived data to an in-memory cache structure without implementing size bounds, TTL, or eviction policy. Under production request volume, this caused linear or accelerating memory growth until process termination.
+**Mechanism:** The validation logic added in commit f09a9a5 likely caches validation results, request metadata, or parsed payloads in an unbounded data structure (e.g., Python list, dict without size limits). Each request appends data without eviction, causing O(n) memory growth with request count.
+
+**Why This Hypothesis:**
+- Direct semantic evidence ("unbounded cache append")
+- Timing aligns perfectly with deployment
+- Memory growth rate consistent with per-request append operation
+- Eliminates all alternative explanations via lack of supporting evidence
+
+---
 
 ## Contributing Factors
 
-1. **Rapid deployment-to-traffic exposure:** Service received production traffic immediately upon deployment without gradual ramp-up, allowing unbounded cache to fill at maximum rate
-2. **Insufficient memory headroom:** Baseline memory (120MB) left only 860MB buffer before exhaustion, providing minimal time-to-detection
-3. **Delayed detection threshold:** Memory warning triggered at 85% utilization, only 68 seconds before crash - insufficient time for intervention
-4. **Lack of memory growth rate alerting:** No rate-of-change monitoring to detect 9.3MB/sec accumulation before absolute threshold breach
+1. **No Memory Monitoring Thresholds in Application:** Warning triggered at 85%, but only 33 seconds before crash - insufficient time for intervention or graceful degradation.
+
+2. **Lack of Circuit Breaker or Backpressure:** Service accepted requests unconstrained, accelerating cache growth.
+
+3. **Missing Pre-Deployment Memory Testing:** Load testing with realistic traffic volume would have detected unbounded growth before production deployment.
+
+4. **No Cache Size Limits in Code:** Language-level or framework-level constraints (e.g., LRU cache with max size) not employed.
+
+---
 
 ## Detection & Prevention Gaps
 
 **Detection Gaps:**
-- No pre-deployment memory profiling or load testing of validation logic changes
-- Memory monitoring alert threshold (85%) triggered too late relative to growth rate
-- No anomaly detection on memory growth velocity (MB/sec)
-- Absence of cache size metrics or logging in application code
-- No automated rollback trigger based on memory exhaustion patterns
+- No application-level memory profiling or heap size metrics exposed
+- Memory alert threshold (85%) too close to failure point - recommend 60% warning, 75% critical
+- No rate-of-change alerting (rapid memory growth detection)
+- No per-request memory allocation tracking
 
 **Prevention Gaps:**
-- Code review process did not identify unbounded data structure accumulation
-- No static analysis tooling to detect cache operations without size limits
-- Missing guardrails: no max-size enforcement, TTL, or LRU eviction in cache implementation
-- Deployment lacked canary phase or gradual traffic shifting to limit blast radius
-- No memory limit enforcement at container/process level to fail gracefully
+- Code review missed "unbounded" append pattern (semantic hint indicates pattern was detectable)
+- No automated static analysis for memory safety (e.g., cache size limits enforcement)
+- Deployment pipeline lacks memory pressure testing or canary analysis
+- Missing observability: cache size, entry count, eviction rate metrics
+
+---
 
 ## Remediation & Follow-ups
 
-**Immediate (Complete within 24 hours):**
-1. Revert commit f09a9a5 or hotfix app.py to implement bounded cache with max size (e.g., 1000 entries) and LRU eviction
-2. Deploy fixed version with canary rollout (10% → 50% → 100% traffic over 30-minute periods)
-3. Add real-time dashboard for cache size and memory growth rate (MB/min)
+**Immediate Actions:**
+1. Revert commit f09a9a5 and redeploy previous stable version
+2. Implement bounded cache with LRU eviction policy (recommend max 1000 entries or 100MB size limit)
+3. Add cache size and entry count metrics to dashboard
 
-**Short-term (Complete within 1 week):**
-4. Implement container memory limits (e.g., 512MB hard limit) with graceful OOM handling
-5. Add memory growth rate alerting: trigger at >2MB/min sustained for 30 seconds
-6. Conduct forensic analysis of cache contents to understand request patterns driving accumulation
-7. Add cache metrics instrumentation: size, hit/miss rate, eviction count
+**Short-Term (1 week):**
+1. Add pre-deployment memory load test (simulate 1000 req/sec for 5 minutes, assert memory < 500MB)
+2. Implement memory-based circuit breaker (reject requests when memory > 80%)
+3. Review all caching logic across codebase for similar unbounded patterns
 
-**Long-term (Complete within 1 month):**
-8. Establish code review checklist item: "Does this change introduce unbounded data structures?"
-9. Deploy static analysis tooling to flag append/insert operations without size checks
-10. Implement pre-production load testing gate for all api-gateway changes (sustained 1000 RPS for 5 minutes)
-11. Design standardized caching library with enforced size limits and telemetry
-12. Conduct architecture review of validation approach - evaluate stateless alternatives
+**Long-Term (1 month):**
+1. Integrate static analysis tool to detect unbounded collection growth patterns
+2. Establish memory budget per service tier (gateway: 512MB steady-state max)
+3. Add application-level memory profiling to observability stack (heap snapshots on alert)
+4. Implement canary deployment strategy with automated memory regression detection
+
+---
 
 ## Remaining Uncertainty
 
-**What we don't know:**
-- **Exact cache data contents:** What specific data (request IDs, validation results, user context) was being cached - requires code inspection or memory dump analysis
-- **Request volume during incident:** No traffic metrics provided - actual RPS driving accumulation rate is unknown
-- **Cache growth function:** Linear (per-request) vs. superlinear (per-request-field) - affects capacity planning
-- **Why validation required caching:** Business logic rationale for cache design unclear - may reveal alternative solutions
+1. **Exact Append Rate:** Unknown what data is being cached (request bodies? validation results? parsed objects?) - requires code inspection to determine per-request memory footprint.
 
-**Why uncertainty remains:**
-- Evidence bundle lacks application-level metrics (cache size, request rate, request characteristics)
-- No memory dump or heap analysis available to inspect cached object structure
-- Code diff not provided - semantic hint confirms pattern but not implementation details
+2. **Traffic Volume During Incident:** No requests/second metrics provided - cannot calculate exact cache entry count or confirm 8.6MB/sec = X requests/sec * Y MB/request.
 
-**Impact of uncertainty on conclusions:**
-- Root cause identification (unbounded cache) has high confidence (75%) despite implementation details uncertainty
-- Remediation strategy (bounded cache with eviction) is correct regardless of specific cached data types
-- Uncertainty primarily affects optimization of cache size tuning and validation redesign
+3. **Pre-Incident Memory Elevation:** Baseline 120MB → Pre-incident 340MB represents +220MB unexplained growth before peak incident. Possible explanations:
+   - Gradual cache buildup over days (cache persists across restarts?)
+   - Unrelated memory usage increase
+   - Measurement timing artifact
+
+4. **Deployment HEAD Commit:** Evidence shows "HEAD" as deployed commit hash instead of explicit SHA - cannot definitively confirm which commits were included in v1.1.0 deployment.
+
+5. **Validation Logic Details:** Commit message references "input validation" - unclear if validation triggers caching of invalid requests, valid requests, or both.
+
+---
 
 ## Confidence Summary
 
 - **Primary root cause confidence:** 75%
-- **Total hypothesis confidence budget used:** 85% (75% H1 + 5% H2 + 3% H3 + 2% H4)
+- **Total hypothesis confidence budget used:** 100%
 - **Uncertainty factors:**
-  - Lack of application-level cache metrics (size, growth tracking)
-  - No traffic volume data to validate growth rate assumptions
-  - Code implementation details not inspected directly
-  - No memory profiling or heap dump analysis performed
-  - 25% residual uncertainty accounts for potential interaction effects or unidentified contributing factors
+  - No code-level inspection of app.py changes
+  - Missing traffic volume metrics
+  - Ambiguous deployment commit reference (HEAD)
+  - Pre-incident memory elevation unexplained
+  - Semantic hint provides strong signal but not definitive proof without code review
 
-**Confidence justification:** High confidence (75%) based on explicit semantic hint "adds unbounded cache append" combined with characteristic memory growth signature and temporal correlation. Remaining 25% uncertainty reflects possibility of compounding factors (e.g., unusual traffic pattern amplifying cache growth) or misinterpretation of semantic hint context.
+**Recommendation:** Conduct code review of app.py changes in commit f09a9a5 to confirm cache implementation details and update confidence to 95%+.
 
