@@ -1,0 +1,38 @@
+# Incident Knowledge Record: INC-125
+# Phase 5: Organizational Memory (Read-Only)
+# This record does not influence future AI reasoning
+
+incident_id: INC-125
+date: 2025-02-09
+service: storage_service
+
+category: Resource
+decision: REJECTED
+
+ai_confidence: 82
+human_confidence: 45
+confidence_delta: -37
+
+primary_root_cause: "Analysis rejected - see notes"
+
+signals:
+  - memory_growth
+  - latency_degradation
+
+contributing_factors:
+  []
+
+remediation_promises:
+  []
+
+evidence_quality:
+  completeness: PARTIAL
+  penalty: 25
+
+reviewer_role: SRE
+finalized_at: 2025-02-09T18:10:00Z
+
+artifacts:
+  review_record: reports/review-record-INC-125.yaml
+  ai_postmortem: reports/post-mortem-INC-125.md
+  scope_audit: reports/scope-audit-INC-125.json

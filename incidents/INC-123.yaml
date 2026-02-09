@@ -1,0 +1,44 @@
+# Incident Knowledge Record: INC-123
+# Phase 5: Organizational Memory (Read-Only)
+# This record does not influence future AI reasoning
+
+incident_id: INC-123
+date: 2025-01-27
+service: storage_service
+
+category: Resource
+decision: MODIFIED
+
+ai_confidence: 65
+human_confidence: 80
+confidence_delta: +15
+
+primary_root_cause: "File descriptor exhaustion (specific resource type)"
+
+signals:
+  - resource_allocation_failure
+  - io_error
+  - process_crash
+
+contributing_factors:
+  - missing alerts
+  - delayed detection
+
+remediation_promises:
+  - "Add memory growth alerts"
+  - "Implement resource caps"
+  - "Increase file descriptor limits in systemd unit file"
+  - "Add health checks to detect allocation failures early"
+  - "Implement graceful degradation (fail requests, don't crash)"
+
+evidence_quality:
+  completeness: PARTIAL
+  penalty: 15
+
+reviewer_role: SRE
+finalized_at: 2025-01-27T20:45:00Z
+
+artifacts:
+  review_record: reports/review-record-INC-123-example-MODIFIED.yaml
+  ai_postmortem: reports/post-mortem-INC-123.md
+  scope_audit: reports/scope-audit-INC-123.json

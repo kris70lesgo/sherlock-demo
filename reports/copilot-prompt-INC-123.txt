@@ -2,270 +2,78 @@ You are a senior Site Reliability Engineer performing a blameless post-mortem us
 
 IMPORTANT: Output ONLY the markdown post-mortem document. Do not output tool invocations, permission errors, or diagnostic messages. Start immediately with the markdown header.
 
-Rules:
+Core Rules:
 - Base conclusions ONLY on the evidence provided
 - Distinguish causation from correlation
-- Use structured hypothesis evaluation before concluding
-- If uncertain, state uncertainty and assign confidence levels
+- Use structured hypothesis evaluation BEFORE concluding
+- Reason in generic systems terms (avoid vendor-specific jargon)
+- If uncertain, state uncertainty and quantify it
 
 Scope Summary:
-- Service: api-gateway
-- Time window: 2026-02-04T00:00:00Z to 2026-02-12T23:59:00Z
+- Service: storage_service
+- Time window: 2015-03-16T23:15:00Z to 2015-03-16T23:20:00Z
 - Paths: all
 - Commit buffer: -10000m / +5m
 
 Reduction Summary:
-- Commits considered: 5 (excluded 0)
-- Logs considered: 5 (excluded 0)
+- Commits considered: 0 (excluded 0)
+- Logs considered: 4 (excluded 1)
 - Metrics considered: 2 (excluded 0)
 
 Evidence Quality Notes:
 - All timestamps normalized to UTC
 - Missing sources: none
-- Confidence penalties: none
+- Confidence penalties: No lifecycle events detected; Crash detected without clean shutdown (-15%)
 
 Incident Evidence Bundle (normalized JSON):
 {
   "metadata": {
     "incident_id": "INC-123",
-    "service": "api-gateway",
+    "service": "storage_service",
     "environment": "demo",
-    "start_time": "2026-02-04T00:00:00Z",
-    "end_time": "2026-02-12T23:59:00Z",
+    "start_time": "2015-03-16T23:15:00Z",
+    "end_time": "2015-03-16T23:20:00Z",
     "timezone": "UTC"
   },
   "version_control": {
-    "commits": [
-      {
-        "commit_hash": "6285f786522ba383ab574da4abf4b71a4befd51b",
-        "author": "Agastya",
-        "timestamp": "2026-02-07T07:57:58Z",
-        "message": "Enhance incident analysis and governance features in Sherlock"
-      },
-      {
-        "commit_hash": "a25c05b38cf7db56894992a88a1387d3d74dc062",
-        "author": "Agastya",
-        "timestamp": "2026-02-06T14:00:37Z",
-        "message": "feat: Implement Phase 3 of Copilot Sherlock with structured hypothesis evaluation"
-      },
-      {
-        "commit_hash": "7dd642087bbf86b3364a1d575cacd446e7a2869e",
-        "author": "Agastya",
-        "timestamp": "2026-02-05T16:16:39Z",
-        "message": "Add design and limitations documentation for Copilot Sherlock"
-      },
-      {
-        "commit_hash": "f320420cc8ad5838c16e80ed1e57ff123677d5a2",
-        "author": "Agastya",
-        "timestamp": "2026-02-05T16:07:28Z",
-        "message": "Add initial implementation of Sherlock CLI tool for incident investigation"
-      },
-      {
-        "commit_hash": "f09a9a5351e2a6724fa5436f6e0c2e55d8321237",
-        "author": "Agastya",
-        "timestamp": "2026-02-05T15:46:43Z",
-        "message": "Add basic input validation to request handler"
-      }
-    ],
-    "diffs": [
-      {
-        "file_path": "PHASE4-SUMMARY.md",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "README.md",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "app.py",
-        "change_type": "M",
-        "semantic_hint": "adds unbounded cache append"
-      },
-      {
-        "file_path": "reports/copilot-prompt-INC-123.txt",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/incident-bundle-INC-123.json",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/postmortem-INC-123.md",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/review-record-INC-123.yaml",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/scope-audit-INC-123.json",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "sherlock",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "README.md",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "incident-scope.json",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/copilot-prompt-INC-123.txt",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/incident-bundle-INC-123.json",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/postmortem-INC-123.md",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/scope-audit-INC-123.json",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "sherlock",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "DESIGN.md",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "LIMITATIONS.md",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "README.md",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/copilot-prompt-INC-123.txt",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/postmortem-INC-123.md",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "sherlock",
-        "change_type": "M",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "README.md",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "evidence/app.log",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "evidence/deployments.json",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "evidence/metrics.json",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "prompts/investigate.txt",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/copilot-prompt-INC-123.txt",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "reports/postmortem-INC-123.md",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "sherlock",
-        "change_type": "A",
-        "semantic_hint": "n/a"
-      },
-      {
-        "file_path": "app.py",
-        "change_type": "M",
-        "semantic_hint": "adds unbounded cache append"
-      }
-    ]
+    "commits": [],
+    "diffs": []
   },
   "deployments": {
     "events": [
       {
-        "timestamp": "2026-02-12T11:15:02Z",
-        "service": "api-gateway",
-        "version": "v1.1.0",
-        "commit_hash": "HEAD"
+        "timestamp": "2015-03-16T23:16:30Z",
+        "service": "storage_service",
+        "version": "v2.8.1",
+        "commit_hash": "a02622fb2800f89c322bfe51359fe8f3d590e17f"
       }
     ]
   },
   "logs": {
     "entries": [
       {
-        "timestamp": "2026-02-12T11:14:58Z",
-        "severity": "INFO",
-        "component": "api-gateway",
-        "message": "Starting api-gateway"
-      },
-      {
-        "timestamp": "2026-02-12T11:15:02Z",
-        "severity": "INFO",
-        "component": "api-gateway",
-        "message": "Deployment version v1.1.0"
-      },
-      {
-        "timestamp": "2026-02-12T11:16:10Z",
+        "timestamp": "2015-03-16T23:17:43Z",
         "severity": "WARN",
-        "component": "api-gateway",
-        "message": "High memory usage detected (85%)"
+        "component": "storage_service",
+        "message": "performance_degradation (count: 1)"
       },
       {
-        "timestamp": "2026-02-12T11:16:42Z",
-        "severity": "ERROR",
-        "component": "api-gateway",
-        "message": "allocation failed"
+        "timestamp": "2015-03-16T23:17:46Z",
+        "severity": "WARN",
+        "component": "storage_service",
+        "message": "io_error (count: 1)"
       },
       {
-        "timestamp": "2026-02-12T11:16:43Z",
+        "timestamp": "2015-03-16T23:17:47Z",
+        "severity": "WARN",
+        "component": "storage_service",
+        "message": "resource_allocation_failure (count: 9)"
+      },
+      {
+        "timestamp": "2015-03-16T23:17:58Z",
         "severity": "ERROR",
-        "component": "api-gateway",
-        "message": "process crashed"
+        "component": "storage_service",
+        "message": "process_crash (count: 2)"
       }
     ]
   },
@@ -291,30 +99,70 @@ Incident Evidence Bundle (normalized JSON):
   },
   "integrity": {
     "missing_sources": [],
-    "confidence_penalties": []
+    "confidence_penalties": [
+      {
+        "source": "hadoop_logs",
+        "reason": "No lifecycle events detected; Crash detected without clean shutdown",
+        "penalty": -15
+      }
+    ]
   }
 }
 
-PHASE 3: HYPOTHESIS-BASED REASONING PROTOCOL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: HYPOTHESIS-BASED REASONING PROTOCOL (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-You MUST perform hypothesis-based reasoning. Follow this exact sequence:
+You MUST NOT jump to conclusions. Follow this exact reasoning sequence:
 
-Instructions:
-1. Enumerate 3-5 plausible hypotheses for the incident
-2. Hypotheses MUST span different categories:
-   - Application logic (code bugs, unbounded growth, etc.)
-   - Infrastructure (hardware, networking, resource limits)
-   - Traffic/Load (volume spikes, DDoS, unusual patterns)
-   - Configuration (settings, deployment config, environment vars)
-   - Dependencies/Runtime (libraries, platform, external services)
-3. For EACH hypothesis:
-   - List evidence FOR the hypothesis
-   - List evidence AGAINST the hypothesis
-   - Assign a confidence score (0-100%)
-4. Total confidence across ALL hypotheses must not exceed 100%
-5. Explicitly RULE OUT hypotheses that are not supported
-6. Only AFTER elimination, select a primary root cause
-7. State remaining uncertainty clearly
+STEP 1: HYPOTHESIS GENERATION (3-5 hypotheses, diverse categories)
+
+Generate 3-5 plausible hypotheses spanning DIFFERENT categories:
+- Application (code bugs, unbounded growth, error handling)
+- Resource (memory exhaustion, disk space, file descriptors)
+- Infrastructure (hardware failure, network partition, node crash)
+- Traffic (load spike, retry storm, cascading failure)
+- Dependency (external service failure, library bug, runtime issue)
+
+EVEN IF a hypothesis seems unlikely, it must be considered to prevent anchoring bias.
+
+STEP 2: EVIDENCE SYMMETRY (FOR + AGAINST, always)
+
+For EACH hypothesis, you MUST provide:
+- **Evidence FOR:** What supports this explanation?
+- **Evidence AGAINST:** What contradicts or weakens this explanation?
+
+If you cannot find evidence AGAINST, the hypothesis is not testable - reject it.
+
+STEP 3: CONFIDENCE BUDGETING (≤100% total)
+
+- Assign confidence to each hypothesis (0-100%)
+- Total confidence across ALL hypotheses MUST NOT exceed 100%
+- Account for evidence quality penalties in your confidence
+- Unused confidence = explicit uncertainty
+
+Example confidence distribution:
+- Hypothesis A: 65%
+- Hypothesis B: 10%
+- Hypothesis C: 5%
+- Hypothesis D: 5% (ruled out after analysis)
+- Uncertainty: 15% (from quality penalties + unknown factors)
+
+STEP 4: EXPLICIT ELIMINATION (before selection)
+
+You MUST explicitly state which hypotheses were ruled out and WHY.
+Do NOT skip weak hypotheses - elimination is how you prove rigor.
+
+STEP 5: ROOT CAUSE SELECTION (last step)
+
+ONLY after elimination, select the primary root cause.
+Root cause = highest confidence hypothesis that survived scrutiny.
+
+CRITICAL CONSTRAINTS:
+✓ Reason in GENERIC systems terms (resource exhaustion, crash, allocation failure)
+✗ NEVER use vendor jargon (Hadoop, DataNode, HDFS, NameNode, Spark, Kubernetes)
+✓ Supporting factors are NOT separate hypotheses (they amplify the root cause)
+✓ Confidence scores reflect evidence quality (account for penalties)
 
 Required Output Structure (STRICT - do not skip or reorder):
 

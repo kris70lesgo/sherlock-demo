@@ -1,8 +1,8 @@
 {
-  "service": "api-gateway",
+  "service": "storage_service",
   "time_window": {
-    "start": "2026-02-04T00:00:00Z",
-    "end": "2026-02-12T23:59:00Z"
+    "start": "2015-03-16T23:15:00Z",
+    "end": "2015-03-16T23:20:00Z"
   },
   "repositories": [
     "."
@@ -14,7 +14,17 @@
   "paths": [],
   "log_policy": {
     "min_severity": "WARN",
-    "include_components": ["api-gateway"]
+    "lifecycle_events": true,
+    "event_allowlist": [
+      "service_start",
+      "service_shutdown",
+      "resource_allocation_failure",
+      "io_error",
+      "process_crash",
+      "registration",
+      "performance_degradation"
+    ],
+    "include_components": ["storage_service"]
   },
   "metric_policy": {
     "include": ["memory_mb", "error_rate_pct"]

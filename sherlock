@@ -62,9 +62,9 @@ import json
 import re
 from pathlib import Path
 
-data_dir = Path("sherlock-data/incidents")
+data_dir = Path("incidents")
 if not data_dir.exists():
-    print("No incident history found (sherlock-data/incidents/ does not exist)")
+    print("No incident history found (incidents/ does not exist)")
     sys.exit(0)
 
 # Simple YAML parser for our specific format
@@ -74,44 +74,39 @@ def parse_incident_yaml(file_path):
         lines = f.readlines()
     
     incident = {}
-    current_section = None
-    current_subsection = None
+    current_key = None
+    current_list = None
     
     for line in lines:
         line_stripped = line.strip()
         if not line_stripped or line_stripped.startswith('#'):
             continue
         
-        # Top-level key
+        # Top-level key: value
         if not line.startswith(' ') and ':' in line:
             key, value = line.split(':', 1)
             key = key.strip()
             value = value.strip().strip('"')
             
             if value:
-                incident[key] = value
+                # Try to convert to int if possible
+                try:
+                    if value.isdigit() or (value.startswith('+') or value.startswith('-')):
+                        incident[key] = int(value)
+                    else:
+                        incident[key] = value
+                except:
+                    incident[key] = value
             else:
-                current_section = key
-                incident[key] = {}
+                current_key = key
+                incident[key] = []
+                current_list = current_key
         
-        # Second level (2 spaces)
-        elif line.startswith('  ') and not line.startswith('    ') and ':' in line:
-            key, value = line.strip().split(':', 1)
-            key = key.strip()
-            value = value.strip().strip('"')
-            
-            if current_section:
-                if value:
-                    incident[current_section][key] = value
-                else:
-                    current_subsection = key
-                    incident[current_section][key] = []
-        
-        # Third level (4 spaces) - list items
-        elif line.startswith('    -'):
+        # List items (starts with -)
+        elif line.startswith('  -'):
             value = line.strip()[1:].strip().strip('"')
-            if current_section and current_subsection:
-                incident[current_section][current_subsection].append(value)
+            if current_list and current_list in incident:
+                incident[current_list].append(value)
     
     return incident
 
@@ -143,17 +138,17 @@ if service_filter:
     filtered = [i for i in filtered if i.get('service') == service_filter]
 
 if category_filter:
-    filtered = [i for i in filtered if i.get('final_root_cause', {}).get('category') == category_filter]
+    filtered = [i for i in filtered if i.get('category') == category_filter]
 
 if decision_filter:
-    filtered = [i for i in filtered if i.get('decision', {}).get('type') == decision_filter]
+    filtered = [i for i in filtered if i.get('decision') == decision_filter]
 
 if confidence_filter:
     threshold = int(confidence_filter)
-    filtered = [i for i in filtered if int(i.get('decision', {}).get('final_confidence', 100)) < threshold]
+    filtered = [i for i in filtered if int(i.get('human_confidence', 100)) < threshold]
 
 if signal_filter:
-    filtered = [i for i in filtered if signal_filter in i.get('signals', {})]
+    filtered = [i for i in filtered if signal_filter in i.get('signals', [])]
 
 # Display results
 if show_calibration:
@@ -163,16 +158,15 @@ if show_calibration:
     deltas = []
     
     for i in incidents:
-        if 'ai_vs_human' in i:
-            try:
-                ai_conf = int(i['ai_vs_human'].get('ai_confidence', 0))
-                human_conf = int(i['ai_vs_human'].get('human_confidence', 0))
-                delta = int(i['ai_vs_human'].get('delta', 0))
-                ai_confidences.append(ai_conf)
-                human_confidences.append(human_conf)
-                deltas.append(delta)
-            except:
-                pass
+        try:
+            ai_conf = int(i.get('ai_confidence', 0))
+            human_conf = int(i.get('human_confidence', 0))
+            delta = int(i.get('confidence_delta', 0))
+            ai_confidences.append(ai_conf)
+            human_confidences.append(human_conf)
+            deltas.append(delta)
+        except:
+            pass
     
     if ai_confidences:
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -206,10 +200,10 @@ else:
     for incident in filtered:
         inc_id = incident.get('incident_id', 'unknown')
         service = incident.get('service', 'unknown')[:15]
-        category = incident.get('final_root_cause', {}).get('category', 'unknown')[:12]
-        confidence = incident.get('decision', {}).get('final_confidence', '0')
-        decision = incident.get('decision', {}).get('type', 'unknown')[:10]
-        timestamp = incident.get('timestamp', '')[:10]
+        category = incident.get('category', 'unknown')[:12]
+        confidence = incident.get('human_confidence', '0')
+        decision = incident.get('decision', 'unknown')[:10]
+        timestamp = incident.get('date', '')[:10]
         
         print(f"{inc_id:<12} | {service:<15} | {category:<12} | {confidence:<4}% | {decision:<10} | {timestamp:<10}")
     
@@ -221,7 +215,7 @@ else:
         print()
         print(f"Incidents with signal '{signal_filter}':")
         for incident in filtered:
-            cause = incident.get('final_root_cause', {}).get('summary', 'unknown')
+            cause = incident.get('primary_root_cause', 'unknown')
             print(f"  • {incident.get('incident_id', 'unknown')}: {cause}")
 HISTORY_QUERY
     
@@ -418,13 +412,374 @@ paths = scope.get("paths", [])
 log_policy = scope.get("log_policy", {"min_severity": "WARN"})
 metric_policy = scope.get("metric_policy", {"include": []})
 
+# ============================================================================
+# ADAPTER INVOCATION (produces raw events, not yet scoped or validated)
+# ============================================================================
+
+def invoke_evidence_adapter(filepath: str, source_type: str) -> Dict:
+    """
+    Route raw evidence through appropriate adapter to enforce contract format.
+    
+    Returns: Evidence object with events (NOT yet scoped or validated)
+    """
+    adapter_map = {
+        "hadoop": "./adapters/hadoop-adapter.py",
+        # Future: "elasticsearch": "./adapters/elasticsearch-adapter.py",
+        # Future: "kubernetes": "./adapters/kubernetes-adapter.py",
+    }
+    
+    adapter_path = adapter_map.get(source_type)
+    if not adapter_path:
+        raise ValueError(f"No adapter found for source type: {source_type}")
+    
+    if not os.path.exists(adapter_path):
+        raise FileNotFoundError(f"Adapter not found: {adapter_path}")
+    
+    # Invoke adapter
+    try:
+        result = subprocess.check_output(
+            ["python3", adapter_path, filepath],
+            text=True,
+            stderr=subprocess.PIPE
+        )
+        evidence = json.loads(result)
+        return evidence
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(f"❌ Adapter failed: {e.stderr}")
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"❌ Adapter output invalid JSON: {e}")
+
+# ============================================================================
+# PHASE 1: EVIDENCE CONTRACT VALIDATION (happens AFTER Phase 2 scoping)
+# ============================================================================
+
+def validate_evidence_contract(evidence: Dict, source_type: str) -> tuple:
+    """
+    Validate evidence against strict contract format.
+    
+    Returns: (is_valid, violations)
+    """
+    violations = []
+    
+    # Check required top-level keys
+    if "source" not in evidence:
+        violations.append("Missing 'source' field")
+    if "quality" not in evidence:
+        violations.append("Missing 'quality' metadata")
+    if "signals" not in evidence:
+        violations.append("Missing 'signals' array")
+    
+    if violations:
+        return False, violations
+    
+    # Validate quality metadata
+    quality = evidence.get("quality", {})
+    if "completeness" not in quality or quality["completeness"] not in ["COMPLETE", "PARTIAL", "INCOMPLETE"]:
+        violations.append(f"Invalid completeness: {quality.get('completeness')}")
+    if "confidence_penalty" not in quality or not isinstance(quality["confidence_penalty"], (int, float)):
+        violations.append("Missing or invalid confidence_penalty")
+    
+    # Validate signals
+    signals = evidence.get("signals", [])
+    if not isinstance(signals, list):
+        violations.append("Signals must be an array")
+        return False, violations
+    
+    for idx, signal in enumerate(signals):
+        # Check timestamp format (ISO-8601 UTC)
+        # Signals can have either 'timestamp' or 'first_seen' (for aggregated events)
+        timestamp_field = signal.get("timestamp") or signal.get("first_seen")
+        if not timestamp_field:
+            violations.append(f"Signal {idx}: missing timestamp/first_seen")
+        else:
+            if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", timestamp_field):
+                violations.append(f"Signal {idx}: invalid timestamp format (expected ISO-8601 UTC): {timestamp_field}")
+        
+        # Check severity (only INFO, WARN, ERROR allowed)
+        if "severity" not in signal:
+            violations.append(f"Signal {idx}: missing severity")
+        elif signal["severity"] not in ["INFO", "WARN", "ERROR"]:
+            violations.append(f"Signal {idx}: invalid severity '{signal['severity']}' (allowed: INFO, WARN, ERROR)")
+        
+        # Check event type (must be generic, no vendor jargon)
+        if "event" not in signal:
+            violations.append(f"Signal {idx}: missing event type")
+        else:
+            event = signal["event"]
+            # Reject vendor-specific terms
+            forbidden_terms = ["hadoop", "datanode", "namenode", "spark", "kafka", "kubernetes", "k8s"]
+            if any(term in event.lower() for term in forbidden_terms):
+                violations.append(f"Signal {idx}: event type contains vendor jargon: '{event}'")
+        
+        # Check aggregation (signals must have count if aggregated)
+        if "count" in signal and not isinstance(signal["count"], int):
+            violations.append(f"Signal {idx}: count must be integer")
+    
+    return len(violations) == 0, violations
+
 # Load raw data
 with open("evidence/deployments.json", "r") as f:
     raw_deployments = json.load(f)
 with open("evidence/metrics.json", "r") as f:
     raw_metrics = json.load(f)
-with open("evidence/app.log", "r") as f:
-    raw_logs = f.readlines()
+
+# ============================================================================
+# PHASE 2: INCIDENT SCOPING & EVIDENCE REDUCTION
+# ============================================================================
+
+def scope_events_by_time(events: List[Dict], start: datetime, end: datetime, buffer_minutes: int = 0) -> tuple:
+    """Step 2.1: Time window filtering (PRIMARY CUT)"""
+    included = []
+    excluded = 0
+    
+    if buffer_minutes > 0:
+        start = start - timedelta(minutes=buffer_minutes)
+        end = end + timedelta(minutes=buffer_minutes)
+    
+    for event in events:
+        timestamp_str = event.get("timestamp") or event.get("first_seen", "")
+        if not timestamp_str:
+            excluded += 1
+            continue
+        
+        try:
+            event_time = parse_iso(timestamp_str)
+            if start <= event_time <= end:
+                included.append(event)
+            else:
+                excluded += 1
+        except:
+            excluded += 1
+    
+    return included, excluded
+
+def scope_events_by_severity(events: List[Dict], min_severity: str, allow_lifecycle: bool) -> tuple:
+    """Step 2.2: Severity threshold filtering"""
+    severity_order = {"INFO": 0, "WARN": 1, "ERROR": 2}
+    min_level = severity_order.get(min_severity, 1)
+    
+    included = []
+    excluded = 0
+    
+    lifecycle_events = ["service_start", "service_shutdown", "startup", "shutdown", "deployment"]
+    
+    for event in events:
+        severity = event.get("severity", "INFO")
+        event_type = event.get("event", "")
+        
+        if severity not in severity_order:
+            excluded += 1
+            continue
+        
+        # Allow lifecycle events even if below threshold
+        if allow_lifecycle and event_type in lifecycle_events:
+            included.append(event)
+        elif severity_order[severity] >= min_level:
+            included.append(event)
+        else:
+            excluded += 1
+    
+    return included, excluded
+
+def scope_events_by_allowlist(events: List[Dict], allowlist: List[str]) -> tuple:
+    """Step 2.3: Event allowlist filtering (KEY for Hadoop)"""
+    if not allowlist:
+        return events, 0
+    
+    included = []
+    excluded = 0
+    
+    for event in events:
+        event_type = event.get("event", "")
+        if event_type in allowlist:
+            included.append(event)
+        else:
+            excluded += 1
+    
+    return included, excluded
+
+def scope_events_by_component(events: List[Dict], target_service: str, allowed_components: List[str]) -> tuple:
+    """Step 2.4: Component relevance check"""
+    included = []
+    excluded = 0
+    
+    # If no explicit allowlist, just check against target service
+    if not allowed_components:
+        allowed_components = [target_service]
+    
+    for event in events:
+        component = event.get("component", "")
+        if component in allowed_components:
+            included.append(event)
+        else:
+            excluded += 1
+    
+    return included, excluded
+
+def deduplicate_events(events: List[Dict]) -> List[Dict]:
+    """Step 2.5: Deduplication & consolidation"""
+    # Group by (event_type, severity, component)
+    groups = {}
+    
+    for event in events:
+        key = (event.get("event"), event.get("severity"), event.get("component"))
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(event)
+    
+    deduplicated = []
+    for key, group in groups.items():
+        if len(group) == 1:
+            deduplicated.append(group[0])
+        else:
+            # Merge multiple events
+            total_count = sum(e.get("count", 1) for e in group)
+            timestamps = []
+            for e in group:
+                if "first_seen" in e:
+                    timestamps.append(e["first_seen"])
+                if "last_seen" in e:
+                    timestamps.append(e["last_seen"])
+                if "timestamp" in e:
+                    timestamps.append(e["timestamp"])
+            
+            timestamps.sort()
+            merged = group[0].copy()
+            merged["count"] = total_count
+            if timestamps:
+                merged["first_seen"] = timestamps[0]
+                merged["last_seen"] = timestamps[-1]
+                if "timestamp" in merged:
+                    del merged["timestamp"]  # Use first_seen/last_seen for aggregated events
+            
+            deduplicated.append(merged)
+    
+    return deduplicated
+
+# Check if we have raw Hadoop logs that need adapter processing
+hadoop_log_path = "evidence/hadoop.log"
+if os.path.exists(hadoop_log_path):
+    print("🔍 Detected raw Hadoop logs - invoking evidence contract adapter")
+    
+    # Invoke Hadoop adapter (produces raw events, NOT validated yet)
+    hadoop_evidence = invoke_evidence_adapter(hadoop_log_path, "hadoop")
+    
+    # ========================================================================
+    # PHASE 2: SCOPE & REDUCE (happens BEFORE validation)
+    # ========================================================================
+    
+    print("📐 Phase 2: Scoping & Reducing events")
+    
+    initial_count = len(hadoop_evidence.get("signals", []))
+    scoped_events = hadoop_evidence.get("signals", [])
+    
+    exclusion_counts = {
+        "outside_time_window": 0,
+        "severity_below_threshold": 0,
+        "event_not_allowlisted": 0,
+        "component_mismatch": 0,
+        "deduplicated": 0
+    }
+    
+    # Step 2.1: Time window filtering
+    scoped_events, excluded_time = scope_events_by_time(scoped_events, start_time, end_time, buffer_minutes=0)
+    exclusion_counts["outside_time_window"] = excluded_time
+    print(f"  Step 2.1 (Time): {initial_count} → {len(scoped_events)} events (-{excluded_time})")
+    
+    # Step 2.2: Severity threshold filtering
+    min_severity = log_policy.get("min_severity", "WARN")
+    allow_lifecycle = log_policy.get("lifecycle_events", True)
+    before_severity = len(scoped_events)
+    scoped_events, excluded_severity = scope_events_by_severity(scoped_events, min_severity, allow_lifecycle)
+    exclusion_counts["severity_below_threshold"] = excluded_severity
+    print(f"  Step 2.2 (Severity): {before_severity} → {len(scoped_events)} events (-{excluded_severity})")
+    
+    # Step 2.3: Event allowlist filtering
+    event_allowlist = log_policy.get("event_allowlist", [])
+    before_allowlist = len(scoped_events)
+    scoped_events, excluded_allowlist = scope_events_by_allowlist(scoped_events, event_allowlist)
+    exclusion_counts["event_not_allowlisted"] = excluded_allowlist
+    print(f"  Step 2.3 (Allowlist): {before_allowlist} → {len(scoped_events)} events (-{excluded_allowlist})")
+    
+    # Step 2.4: Component relevance check
+    allowed_components = log_policy.get("include_components", [service])
+    before_component = len(scoped_events)
+    scoped_events, excluded_component = scope_events_by_component(scoped_events, service, allowed_components)
+    exclusion_counts["component_mismatch"] = excluded_component
+    print(f"  Step 2.4 (Component): {before_component} → {len(scoped_events)} events (-{excluded_component})")
+    
+    # Step 2.5: Deduplication
+    before_dedup = len(scoped_events)
+    scoped_events = deduplicate_events(scoped_events)
+    exclusion_counts["deduplicated"] = before_dedup - len(scoped_events)
+    print(f"  Step 2.5 (Dedup): {before_dedup} → {len(scoped_events)} events (-{exclusion_counts['deduplicated']})")
+    
+    # Failure mode: No events remaining
+    if not scoped_events:
+        raise SystemExit("❌ Phase 2: No events remain after scoping. Aborting investigation.")
+    
+    # Failure mode: Only INFO remains (low signal)
+    has_error_or_warn = any(e.get("severity") in ["ERROR", "WARN"] for e in scoped_events)
+    if not has_error_or_warn:
+        print("⚠️  Phase 2: Only INFO events remain (low signal)")
+    
+    # Generate scope audit
+    scope_audit = {
+        "source": hadoop_evidence.get("source"),
+        "included": len(scoped_events),
+        "excluded": initial_count - len(scoped_events),
+        "exclusion_breakdown": exclusion_counts,
+        "reduction_ratio": f"{(1 - len(scoped_events)/initial_count)*100:.1f}%"
+    }
+    
+    print(f"✓ Phase 2 complete: {initial_count} events → {len(scoped_events)} events (reduction: {scope_audit['reduction_ratio']})")
+    
+    # ========================================================================
+    # PHASE 1: VALIDATE scoped events (happens AFTER reduction)
+    # ========================================================================
+    
+    # Reconstruct evidence object with scoped events
+    scoped_evidence = {
+        "source": hadoop_evidence["source"],
+        "quality": hadoop_evidence["quality"],
+        "signals": scoped_events
+    }
+    
+    # NOW validate the scoped evidence
+    is_valid, violations = validate_evidence_contract(scoped_evidence, "hadoop")
+    if not is_valid:
+        print("❌ Phase 1: Evidence contract validation FAILED:")
+        for v in violations:
+            print(f"   - {v}")
+        raise SystemExit("❌ Contract violations detected. Aborting investigation.")
+    
+    print(f"✓ Phase 1 complete: Evidence contract validated ({len(scoped_events)} scoped signals)")
+    
+    # Convert contract signals to log format for downstream processing
+    raw_logs = []
+    for signal in scoped_events:
+        timestamp = signal.get("timestamp") or signal.get("first_seen", "")
+        message = f"{signal['event']} (count: {signal.get('count', 1)})"
+        if "context" in signal:
+            message += f" - {signal['context']}"
+        log_line = f"{timestamp} {signal['severity']} {hadoop_evidence['source']} {message}\n"
+        raw_logs.append(log_line)
+    
+    # Store quality penalties for later propagation
+    evidence_quality_penalties = [{
+        "source": "hadoop_logs",
+        "reason": "; ".join(hadoop_evidence['quality'].get('notes', [])),
+        "penalty": -hadoop_evidence['quality']['confidence_penalty']
+    }]
+    
+    # Store scope audit for reporting
+    phase2_scope_audit = scope_audit
+else:
+    # Fallback to standard app.log
+    with open("evidence/app.log", "r") as f:
+        raw_logs = f.readlines()
+    evidence_quality_penalties = []
+    phase2_scope_audit = None
 
 # STEP 2.2: Deployment anchoring
 deployments = find_deployments(raw_deployments, start_time, end_time)
@@ -475,6 +830,10 @@ scope_audit = {
         "metric_dimension_not_in_scope",
     ],
 }
+
+# Add Phase 2 Hadoop event reduction audit if available
+if phase2_scope_audit is not None:
+    scope_audit["hadoop_event_reduction"] = phase2_scope_audit
 
 # ============================================================================
 # PHASE 1: NORMALIZATION & VALIDATION
@@ -575,7 +934,7 @@ for c in commits:
 
 # Integrity accounting
 missing_sources = []
-confidence_penalties = []
+confidence_penalties = evidence_quality_penalties.copy()  # Start with adapter penalties
 
 if not log_entries:
     missing_sources.append("application_logs")
@@ -638,11 +997,12 @@ PROMPT="You are a senior Site Reliability Engineer performing a blameless post-m
 
 IMPORTANT: Output ONLY the markdown post-mortem document. Do not output tool invocations, permission errors, or diagnostic messages. Start immediately with the markdown header.
 
-Rules:
+Core Rules:
 - Base conclusions ONLY on the evidence provided
 - Distinguish causation from correlation
-- Use structured hypothesis evaluation before concluding
-- If uncertain, state uncertainty and assign confidence levels
+- Use structured hypothesis evaluation BEFORE concluding
+- Reason in generic systems terms (avoid vendor-specific jargon)
+- If uncertain, state uncertainty and quantify it
 
 Scope Summary:
 $(python3 -c "import json; s=json.load(open('$SCOPE_AUDIT_FILE')); print('- Service: ' + s['scope_summary']['service']); print('- Time window: ' + s['scope_summary']['time_window']); print('- Paths: ' + str(s['scope_summary']['paths'])); print('- Commit buffer: ' + s['scope_summary']['commit_buffer'])")
@@ -658,26 +1018,60 @@ Evidence Quality Notes:
 Incident Evidence Bundle (normalized JSON):
 $BUNDLE_JSON
 
-PHASE 3: HYPOTHESIS-BASED REASONING PROTOCOL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: HYPOTHESIS-BASED REASONING PROTOCOL (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-You MUST perform hypothesis-based reasoning. Follow this exact sequence:
+You MUST NOT jump to conclusions. Follow this exact reasoning sequence:
 
-Instructions:
-1. Enumerate 3-5 plausible hypotheses for the incident
-2. Hypotheses MUST span different categories:
-   - Application logic (code bugs, unbounded growth, etc.)
-   - Infrastructure (hardware, networking, resource limits)
-   - Traffic/Load (volume spikes, DDoS, unusual patterns)
-   - Configuration (settings, deployment config, environment vars)
-   - Dependencies/Runtime (libraries, platform, external services)
-3. For EACH hypothesis:
-   - List evidence FOR the hypothesis
-   - List evidence AGAINST the hypothesis
-   - Assign a confidence score (0-100%)
-4. Total confidence across ALL hypotheses must not exceed 100%
-5. Explicitly RULE OUT hypotheses that are not supported
-6. Only AFTER elimination, select a primary root cause
-7. State remaining uncertainty clearly
+STEP 1: HYPOTHESIS GENERATION (3-5 hypotheses, diverse categories)
+
+Generate 3-5 plausible hypotheses spanning DIFFERENT categories:
+- Application (code bugs, unbounded growth, error handling)
+- Resource (memory exhaustion, disk space, file descriptors)
+- Infrastructure (hardware failure, network partition, node crash)
+- Traffic (load spike, retry storm, cascading failure)
+- Dependency (external service failure, library bug, runtime issue)
+
+EVEN IF a hypothesis seems unlikely, it must be considered to prevent anchoring bias.
+
+STEP 2: EVIDENCE SYMMETRY (FOR + AGAINST, always)
+
+For EACH hypothesis, you MUST provide:
+- **Evidence FOR:** What supports this explanation?
+- **Evidence AGAINST:** What contradicts or weakens this explanation?
+
+If you cannot find evidence AGAINST, the hypothesis is not testable - reject it.
+
+STEP 3: CONFIDENCE BUDGETING (≤100% total)
+
+- Assign confidence to each hypothesis (0-100%)
+- Total confidence across ALL hypotheses MUST NOT exceed 100%
+- Account for evidence quality penalties in your confidence
+- Unused confidence = explicit uncertainty
+
+Example confidence distribution:
+- Hypothesis A: 65%
+- Hypothesis B: 10%
+- Hypothesis C: 5%
+- Hypothesis D: 5% (ruled out after analysis)
+- Uncertainty: 15% (from quality penalties + unknown factors)
+
+STEP 4: EXPLICIT ELIMINATION (before selection)
+
+You MUST explicitly state which hypotheses were ruled out and WHY.
+Do NOT skip weak hypotheses - elimination is how you prove rigor.
+
+STEP 5: ROOT CAUSE SELECTION (last step)
+
+ONLY after elimination, select the primary root cause.
+Root cause = highest confidence hypothesis that survived scrutiny.
+
+CRITICAL CONSTRAINTS:
+✓ Reason in GENERIC systems terms (resource exhaustion, crash, allocation failure)
+✗ NEVER use vendor jargon (Hadoop, DataNode, HDFS, NameNode, Spark, Kubernetes)
+✓ Supporting factors are NOT separate hypotheses (they amplify the root cause)
+✓ Confidence scores reflect evidence quality (account for penalties)
 
 Required Output Structure (STRICT - do not skip or reorder):
 
@@ -784,17 +1178,29 @@ else:
     
     if hyp_count < 3:
         errors.append(f"Only {hyp_count} hypotheses found (minimum: 3)")
+    elif hyp_count > 5:
+        warnings.append(f"Found {hyp_count} hypotheses (recommended: 3-5)")
     else:
         print(f"   ✓ Found {hyp_count} hypotheses")
+    
+    # Check for category diversity
+    category_pattern = r'\(Category: (Application|Resource|Infrastructure|Traffic|Dependency)\)'
+    categories = re.findall(category_pattern, content)
+    unique_categories = set(categories)
+    
+    if len(unique_categories) < 2:
+        warnings.append(f"Low category diversity: only {len(unique_categories)} unique categories (recommended: 3+)")
+    else:
+        print(f"   ✓ Category diversity: {len(unique_categories)} distinct categories ({', '.join(unique_categories)})")
     
     # Check for evidence symmetry (FOR and AGAINST)
     for_count = content.count('**Evidence FOR:**')
     against_count = content.count('**Evidence AGAINST:**')
     
     if for_count != hyp_count or against_count != hyp_count:
-        warnings.append(f"Evidence asymmetry detected: {for_count} FOR, {against_count} AGAINST (expected {hyp_count} each)")
+        errors.append(f"Evidence asymmetry detected: {for_count} FOR, {against_count} AGAINST (expected {hyp_count} each)")
     else:
-        print(f"   ✓ Evidence symmetry maintained (FOR + AGAINST for each hypothesis)")
+        print(f"   ✓ Evidence symmetry maintained ({hyp_count} FOR + {hyp_count} AGAINST)")
     
     # Check for confidence scores
     confidence_pattern = r'\*\*Confidence:\*\* (\d+)%'
@@ -805,7 +1211,8 @@ else:
         if total_confidence > 100:
             errors.append(f"Confidence budget exceeded: {total_confidence}% (maximum: 100%)")
         else:
-            print(f"   ✓ Confidence budget: {total_confidence}% (within limit)")
+            remaining = 100 - total_confidence
+            print(f"   ✓ Confidence budget: {total_confidence}% used, {remaining}% uncertainty")
     else:
         warnings.append("No confidence scores found")
     
@@ -824,9 +1231,19 @@ else:
     if ruled_out == 0:
         warnings.append("No hypotheses explicitly ruled out")
     else:
-        print(f"   ✓ {ruled_out} hypothesis(es) ruled out")
+        print(f"   ✓ {ruled_out} hypothesis(es) explicitly ruled out")
 
-# Check 3: Required sections present
+# Check 3: No vendor jargon (generic systems reasoning)
+vendor_terms = ['hadoop', 'hdfs', 'datanode', 'namenode', 'spark', 'kafka', 'kubernetes', 'k8s']
+content_lower = content.lower()
+found_jargon = [term for term in vendor_terms if term in content_lower]
+
+if found_jargon:
+    warnings.append(f"Vendor jargon detected: {', '.join(found_jargon)} - prefer generic systems terms")
+else:
+    print(f"   ✓ Generic systems reasoning (no vendor jargon)")
+
+# Check 4: Required sections present
 required_sections = [
     '## Timeline',
     '## Evidence Evaluation',
@@ -930,21 +1347,35 @@ UNCERTAINTY=$(python3 -c "import json; d=json.load(open('/tmp/sherlock-summary-$
 rm -f /tmp/sherlock-summary-$$.json
 
 # Present review summary
-echo "Incident $INCIDENT_ID — Review Required"
+echo "Incident: $INCIDENT_ID"
+echo "Service: $SERVICE"
 echo
 echo "AI-Proposed Root Cause ($CONFIDENCE% confidence):"
 echo "  • $PRIMARY_CAUSE"
 echo
-echo "Ruled-Out Hypotheses: $RULED_OUT_COUNT hypotheses explicitly eliminated"
-echo
-echo "Remaining uncertainty: ${UNCERTAINTY}%"
+echo "Analysis Quality:"
+echo "  • Hypotheses evaluated: $((RULED_OUT_COUNT + 1))"
+echo "  • Hypotheses ruled out: $RULED_OUT_COUNT"
+echo "  • Remaining uncertainty: ${UNCERTAINTY}%"
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
-echo "Choose an action:"
-echo "  [A] Accept     - Agree with AI conclusion and confidence"
-echo "  [M] Modify     - Directionally correct but needs adjustment"
-echo "  [R] Reject     - Analysis not actionable"
+echo "Choose a decision:"
+echo
+echo "  [A] ACCEPT"
+echo "      • Keep AI analysis as-is (no changes)"
+echo "      • Accountability: Human reviewer endorses AI conclusion"
+echo "      • Triggers: finalize review record, write to institutional memory"
+echo
+echo "  [M] MODIFY"
+echo "      • AI analysis is directionally correct but requires adjustment"
+echo "      • Override root cause, confidence, or remediation"
+echo "      • AI proposal preserved for audit trail"
+echo
+echo "  [R] REJECT"
+echo "      • Analysis is not actionable - insufficient evidence or contradictory signals"
+echo "      • AI output preserved (not deleted)"
+echo "      • Reason documented"
 echo
 read -p "Decision [A/M/R]: " DECISION
 
@@ -977,13 +1408,15 @@ case "$DECISION" in
         DECISION_LABEL="ACCEPTED"
         echo
         echo "✓ Decision: ACCEPTED"
-        echo "  AI analysis accepted as-is"
+        echo "  • AI analysis accepted without modification"
+        echo "  • Accountability: Human reviewer endorses AI conclusion"
         ;;
     M)
         DECISION_LABEL="MODIFIED"
         echo
         echo "📝 Decision: MODIFIED"
-        echo "   Please specify changes..."
+        echo "   AI analysis is directionally correct but requires adjustment"
+        echo "   Please specify overrides..."
         echo
         
         # Collect overrides
@@ -1007,25 +1440,32 @@ case "$DECISION" in
             OVERRIDES_JSON=$(python3 -c "import json; overrides = json.loads('$OVERRIDES_JSON'); overrides.append({'field': 'confidence', 'original_value': $CONFIDENCE, 'new_value': $NEW_CONFIDENCE, 'rationale': '''$CONF_RATIONALE'''}); print(json.dumps(overrides))")
         fi
         
-        read -p "Additional notes (optional): " NOTES
+        read -p "Additional notes (e.g., context-specific concerns): " NOTES
         if [ -n "$NOTES" ]; then
             NOTES_JSON=$(python3 -c "import json; print(json.dumps(['$NOTES']))")
         fi
         
         echo
-        echo "✓ Modifications recorded"
+        echo "✓ Modifications recorded with rationale"
+        echo "  • AI proposal preserved for audit trail"
+        echo "  • Human overrides documented"
         ;;
     R)
         DECISION_LABEL="REJECTED"
         echo
         echo "⚠️  Decision: REJECTED"
-        read -p "Reason for rejection: " REJECTION_REASON
-        NOTES_JSON=$(python3 -c "import json; print(json.dumps(['REJECTED: $REJECTION_REASON']))")
+        echo "   Analysis is not actionable - insufficient evidence or contradictory signals"
+        echo
+        read -p "Primary reason for rejection: " REJECTION_REASON
+        NOTES_JSON=$(python3 -c "import json; print(json.dumps(['REJECTED: $REJECTION_REASON', 'Analysis preserved for transparency but not endorsed']))")
         FINAL_ROOT_CAUSE="Analysis rejected - see notes"
         FINAL_CONFIDENCE="0"
         
         echo
         echo "✓ Rejection recorded"
+        echo "  • Confidence set to 0%"
+        echo "  • AI output preserved (not deleted)"
+        echo "  • Reason documented"
         ;;
 esac
 
@@ -1073,26 +1513,31 @@ notes = json.loads(notes_json)
 
 # Build Review Record
 review_record = f"""# Review Record: {incident_id}
+# Generated by Sherlock Phase 4: Human Review & Decision Accountability
+# Timestamp: {review_time}
 
 incident_id: {incident_id}
 
 reviewer:
   name: "{reviewer_name}"
-  role: "{reviewer_role}"
+  role: "{reviewer_role}"  # Incident Commander | SRE | Maintainer
   identifier: "{reviewer_id}"
 
 review_time: {review_time}
 
+# AI Proposal (Phase 3 Output)
 ai_proposal:
   primary_root_cause: "{primary_cause}"
-  confidence: {confidence}
+  confidence: {confidence}  # 0-100%
   ruled_out_count: {ruled_out_count}
 
+# Human Decision (Phase 4)
 human_decision:
-  decision: {decision}
+  decision: {decision}  # ACCEPTED | MODIFIED | REJECTED
   final_root_cause: "{final_cause}"
-  final_confidence: {final_confidence}
+  final_confidence: {final_confidence}  # 0-100%
 
+# Overrides (if decision = MODIFIED)
 overrides:
 """
 
@@ -1117,15 +1562,22 @@ else:
     review_record += '  []\n'
 
 review_record += f"""
+# Approval Status
 approval:
-  status: {approval_status}
+  status: {approval_status}  # FINALIZED | DRAFT
 
-# Artifacts
+# Artifact References
 artifacts:
   ai_postmortem: reports/postmortem-{incident_id}.md
   evidence_bundle: reports/incident-bundle-{incident_id}.json
   scope_audit: reports/scope-audit-{incident_id}.json
   copilot_prompt: reports/copilot-prompt-{incident_id}.txt
+
+# Governance Notes
+# - AI proposes, humans decide, Sherlock records
+# - This record is immutable once finalized
+# - Overrides preserve AI proposal for audit trail
+# - REJECTED analyses are preserved for transparency
 """
 
 # Write to file
@@ -1160,7 +1612,7 @@ if [ "$APPROVAL_STATUS" = "FINALIZED" ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
-    INCIDENT_STORE="sherlock-data/incidents"
+    INCIDENT_STORE="incidents"
     mkdir -p "$INCIDENT_STORE"
     
     INCIDENT_FILE="$INCIDENT_STORE/$INCIDENT_ID.yaml"

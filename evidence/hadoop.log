@@ -1,0 +1,30 @@
+2015-03-16 23:17:42,123 INFO org.apache.hadoop.hdfs.server.datanode.DataNode: STARTUP_MSG: 
+/************************************************************
+STARTUP_MSG: Starting DataNode
+STARTUP_MSG:   host = storage-node-01/10.0.1.15
+STARTUP_MSG:   args = []
+STARTUP_MSG:   version = 2.6.0
+************************************************************/
+2015-03-16 23:17:43,456 INFO org.apache.hadoop.hdfs.server.datanode.DataNode: Registered FSDatasetState via JMX
+2015-03-16 23:17:43,789 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Slow BlockReceiver write packet to mirror took 345ms (threshold=300ms)
+2015-03-16 23:17:44,012 INFO org.apache.hadoop.hdfs.server.datanode.DataNode: Block pool BP-1234567890 (storage_service) service to namenode/10.0.1.10:9000 starting
+2015-03-16 23:17:45,234 INFO org.apache.hadoop.hdfs.server.datanode.DataNode: Successfully sent block report to namenode, 1250 blocks processed
+2015-03-16 23:17:46,567 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Could not get block locations. Block not found: blk_1073741825
+2015-03-16 23:17:47,890 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data1 failed to allocate 128MB block
+2015-03-16 23:17:48,123 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data2 failed to allocate 128MB block
+2015-03-16 23:17:49,456 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data1 failed to allocate 128MB block
+2015-03-16 23:17:50,789 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data2 failed to allocate 128MB block
+2015-03-16 23:17:52,012 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data1 failed to allocate 128MB block
+2015-03-16 23:17:53,234 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data2 failed to allocate 128MB block
+2015-03-16 23:17:54,567 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data1 failed to allocate 128MB block
+2015-03-16 23:17:55,890 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data2 failed to allocate 128MB block
+2015-03-16 23:17:57,123 WARN org.apache.hadoop.hdfs.server.datanode.DataNode: Volume /data/hdfs/data1 failed to allocate 128MB block
+2015-03-16 23:17:58,456 ERROR org.apache.hadoop.hdfs.server.datanode.DataNode: RECEIVED SIGNAL 15: SIGTERM
+2015-03-16 23:17:58,789 ERROR org.apache.hadoop.hdfs.server.datanode.DataNode: SHUTDOWN_MSG: 
+/************************************************************
+SHUTDOWN_MSG: Shutting down DataNode at storage-node-01/10.0.1.15
+************************************************************/
+2015-03-16 23:18:01,012 ERROR org.apache.hadoop.hdfs.server.datanode.DataNode: Exception in DataNode: java.lang.OutOfMemoryError: Java heap space
+	at org.apache.hadoop.hdfs.server.datanode.BlockReceiver.receiveBlock(BlockReceiver.java:456)
+	at org.apache.hadoop.hdfs.server.datanode.DataXceiver.writeBlock(DataXceiver.java:678)
+	at org.apache.hadoop.hdfs.protocol.datatransfer.Receiver.opWriteBlock(Receiver.java:124)

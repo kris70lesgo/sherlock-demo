@@ -1,0 +1,41 @@
+# Incident Knowledge Record: INC-124
+# Phase 5: Organizational Memory (Read-Only)
+# This record does not influence future AI reasoning
+
+incident_id: INC-124
+date: 2025-02-03
+service: api-gateway
+
+category: Config
+decision: ACCEPTED
+
+ai_confidence: 75
+human_confidence: 75
+confidence_delta: 0
+
+primary_root_cause: "Incorrect rate limit configuration after deployment"
+
+signals:
+  - error_rate_spike
+  - latency_degradation
+
+contributing_factors:
+  - insufficient testing
+  - missing config validation
+
+remediation_promises:
+  - "Add pre-deployment config validation"
+  - "Implement gradual rollout for config changes"
+  - "Add rate limit metrics to dashboard"
+
+evidence_quality:
+  completeness: FULL
+  penalty: 0
+
+reviewer_role: Incident Commander
+finalized_at: 2025-02-03T14:22:00Z
+
+artifacts:
+  review_record: reports/review-record-INC-124.yaml
+  ai_postmortem: reports/post-mortem-INC-124.md
+  scope_audit: reports/scope-audit-INC-124.json

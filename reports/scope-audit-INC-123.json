@@ -1,18 +1,18 @@
 {
   "scope_summary": {
-    "service": "api-gateway",
-    "time_window": "2026-02-04T00:00:00Z to 2026-02-12T23:59:00Z",
+    "service": "storage_service",
+    "time_window": "2015-03-16T23:15:00Z to 2015-03-16T23:20:00Z",
     "paths": "all",
     "commit_buffer": "-10000m / +5m"
   },
   "reduction_summary": {
     "commits": {
-      "included": 5,
+      "included": 0,
       "excluded": 0
     },
     "logs": {
-      "included": 5,
-      "excluded": 0
+      "included": 4,
+      "excluded": 1
     },
     "metrics": {
       "included": 2,
@@ -23,5 +23,18 @@
     "outside_commit_window",
     "severity_below_threshold",
     "metric_dimension_not_in_scope"
-  ]
+  ],
+  "hadoop_event_reduction": {
+    "source": "hadoop",
+    "included": 5,
+    "excluded": 2,
+    "exclusion_breakdown": {
+      "outside_time_window": 0,
+      "severity_below_threshold": 2,
+      "event_not_allowlisted": 0,
+      "component_mismatch": 0,
+      "deduplicated": 0
+    },
+    "reduction_ratio": "28.6%"
+  }
 }
