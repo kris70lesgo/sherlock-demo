@@ -1,0 +1,63 @@
+{
+  "incident_id": "INC-123",
+  "provenance_generated": "2026-02-09T16:31:37.106387Z",
+  "sherlock_version": "1.0.0",
+  "reasoning_protocol": {
+    "type": "hypothesis-based",
+    "version": "1.0",
+    "hash": "sha256:aaeba4d53d7f50d0e4803764a88f0ced11220f5aa06d926006ed9123e42c79e0"
+  },
+  "artifacts": {
+    "incident_bundle": "sha256:not_found",
+    "scope_audit": "sha256:not_found",
+    "postmortem": "sha256:not_found",
+    "review_record": "sha256:not_found",
+    "incident_knowledge_record": "sha256:not_found"
+  },
+  "executed_phases": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "phase_integrity": {
+    "phase1_evidence_contract": true,
+    "phase2_scoping_reduction": true,
+    "phase3_hypothesis_reasoning": true,
+    "phase4_human_governance": true,
+    "phase5_memory_isolation": true,
+    "phase6_read_only_integration": true,
+    "phase7_observational_only": true
+  },
+  "governance_compliance": {
+    "human_review_required": true,
+    "ai_proposes_humans_decide": true,
+    "finalization_enforced": true,
+    "immutability_preserved": true
+  },
+  "forbidden_capabilities_absent": [
+    "learning",
+    "feedback_loops",
+    "auto_approval",
+    "prompt_evolution",
+    "confidence_reweighting",
+    "hypothesis_memory",
+    "dynamic_rule_changes"
+  ],
+  "trust_guarantees": {
+    "no_feedback_loops": true,
+    "phase5_read_only": true,
+    "phase6_side_effects_only": true,
+    "append_only_memory": true
+  },
+  "external_verifiability": {
+    "reasoning_manifest": "phase7/reasoning-manifest.json",
+    "provenance_record": "phase7/provenance-INC-123.json",
+    "trust_report": "phase7/trust-report-INC-123.md",
+    "all_artifact_hashes_computed": true
+  },
+  "disclaimer": "This provenance record cryptographically binds this incident to a specific reasoning configuration. Any artifact modification will change hashes, making tampering detectable."
+}

@@ -1,0 +1,51 @@
+{
+  "sherlock_version": "1.0.0",
+  "generated_at": "2026-02-09T00:00:00Z",
+  "phases_enabled": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "reasoning_protocol": {
+    "copilot_prompt_hash": "sha256:7c8f9a2b3d4e5f6a7b8c9d0e1f2a3b4c",
+    "hypothesis_protocol": "v1",
+    "hypothesis_requirements": {
+      "minimum_count": 3,
+      "maximum_count": 5,
+      "diversity_required": true,
+      "evidence_symmetry": "FOR + AGAINST required",
+      "confidence_budgeting": "total <= 100%"
+    }
+  },
+  "confidence_rules": {
+    "max_total": 100,
+    "quality_penalty_source": "phase1_evidence_contract",
+    "human_override": true,
+    "ai_cannot_self_modify": true
+  },
+  "governance_guarantees": {
+    "phase4_human_review": "mandatory",
+    "phase5_append_only": true,
+    "phase6_read_only": true,
+    "no_auto_approval": true
+  },
+  "forbidden_capabilities": [
+    "learning",
+    "feedback_loops",
+    "auto-approval",
+    "prompt_modification",
+    "confidence_manipulation",
+    "hypothesis_injection",
+    "evidence_filtering",
+    "governance_bypass"
+  ],
+  "audit_properties": {
+    "immutable_artifacts": true,
+    "cryptographic_provenance": true,
+    "external_verifiability": true,
+    "tamper_evidence": true
+  }
+}

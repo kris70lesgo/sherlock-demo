@@ -1,0 +1,51 @@
+# Phase 6: Operational Integration Configuration
+# This configuration controls side effects only - never influences reasoning
+
+enabled: true
+
+# Dispatch rules by decision type
+dispatch:
+  jira:
+    enabled: true
+    project: "SRE"
+    issue_type: "Task"
+    priority: "Medium"
+    labels: ["incident-remediation", "sherlock"]
+  
+  github:
+    enabled: false
+    repo: "org/infrastructure"
+    labels: ["incident", "remediation"]
+  
+  slack:
+    enabled: true
+    channel: "#incident-reviews"
+    mention_on_modified: true
+    mention_on_rejected: true
+  
+  email:
+    enabled: false
+    to: ["sre-team@example.com"]
+    cc: ["incident-commander@example.com"]
+
+# Rules: which dispatchers fire for which decisions
+rules:
+  on_decision:
+    ACCEPTED:
+      - slack
+    MODIFIED:
+      - jira
+      - slack
+    REJECTED:
+      - slack
+
+# Follow-up tracking
+follow_up:
+  enabled: true
+  reminder_days: 14  # Reminder if remediation promises not closed
+  track_in: jira    # Where to track remediation status
+
+# Safety: Phase 6 is read-only
+# - Never mutates Sherlock state
+# - Never touches Copilot
+# - Fully optional (removing Phase 6 changes nothing upstream)

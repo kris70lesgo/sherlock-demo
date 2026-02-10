@@ -1805,6 +1805,18 @@ EXTRACT_INDEX
             echo "   • Append-only guarantee preserved"
             echo "   • No influence on future reasoning"
             echo "   • Query with: ./sherlock history"
+            
+            # Phase 6: Operational Integration (optional, read-only)
+            if [ -f "phase6/phase6.sh" ]; then
+                echo
+                bash phase6/phase6.sh "$INCIDENT_ID"
+            fi
+            
+            # Phase 7: Trust, Assurance & Verifiability (optional, observational)
+            if [ -f "phase7/phase7.sh" ]; then
+                echo
+                bash phase7/phase7.sh "$INCIDENT_ID"
+            fi
         else
             echo "❌ Phase 5 write failed"
         fi

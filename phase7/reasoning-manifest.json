@@ -1,0 +1,104 @@
+{
+  "sherlock_version": "1.0.0",
+  "manifest_generated": "2025-01-27T21:00:00Z",
+  "manifest_description": "Fixed reasoning configuration - no adaptive behavior",
+  
+  "phases_enabled": [1, 2, 3, 4, 5, 6, 7],
+  
+  "phase_descriptions": {
+    "1": "Evidence Contract & Normalization",
+    "2": "Scoping & Reduction",
+    "3": "Hypothesis-Based Reasoning (AI)",
+    "4": "Human Review & Decision Accountability",
+    "5": "Organizational Memory",
+    "6": "Operational Integration",
+    "7": "Trust, Assurance & Verifiability"
+  },
+  
+  "reasoning_protocol": {
+    "type": "hypothesis-based",
+    "version": "1.0",
+    "protocol_hash": "sha256:aaeba4d53d7f50d0e4803764a88f0ced11220f5aa06d926006ed9123e42c79e0",
+    "mandatory_steps": [
+      "hypothesis_generation",
+      "evidence_symmetry",
+      "confidence_budgeting",
+      "explicit_ruling_out",
+      "uncertainty_accounting"
+    ]
+  },
+  
+  "confidence_rules": {
+    "max_total": 100,
+    "require_evidence_for_and_against": true,
+    "quality_penalty_source": "phase1_evidence_contract",
+    "no_auto_escalation": true
+  },
+  
+  "governance_requirements": {
+    "phase4_mandatory": true,
+    "human_review_required": true,
+    "finalization_required_for_memory": true,
+    "ai_proposes_humans_decide": true,
+    "immutability_after_finalization": true
+  },
+  
+  "forbidden_capabilities": [
+    "learning",
+    "feedback_loops",
+    "auto_approval",
+    "prompt_evolution",
+    "confidence_reweighting",
+    "hypothesis_memory",
+    "dynamic_rule_changes"
+  ],
+  
+  "isolation_guarantees": {
+    "phase5_read_only": true,
+    "phase6_side_effects_only": true,
+    "phase7_observational_only": true,
+    "no_reasoning_feedback": true
+  },
+  
+  "evidence_contract": {
+    "required_fields": ["timestamp", "severity", "event", "component"],
+    "jargon_detection": true,
+    "quality_assessment": true,
+    "adapter_validation": true
+  },
+  
+  "audit_trail": {
+    "append_only_memory": true,
+    "provenance_records": true,
+    "artifact_hashing": true,
+    "version_binding": true
+  },
+  
+  "cryptographic_binding": {
+    "algorithm": "SHA-256",
+    "artifacts_hashed": [
+      "incident_bundle",
+      "scope_audit",
+      "postmortem",
+      "review_record",
+      "incident_knowledge_record"
+    ]
+  },
+  
+  "trust_properties": {
+    "reasoning_is_deterministic": "Given same inputs, same reasoning protocol applies",
+    "governance_is_mandatory": "Phase 4 human review cannot be bypassed",
+    "memory_is_isolated": "Phase 5 cannot influence Phase 1-4",
+    "integration_is_read_only": "Phase 6 cannot mutate Sherlock state",
+    "verification_is_passive": "Phase 7 observes, never controls"
+  },
+  
+  "external_verifiability": {
+    "reasoning_manifest_public": true,
+    "incident_provenance_generated": true,
+    "trust_reports_human_readable": true,
+    "hash_verification_enabled": true
+  },
+  
+  "disclaimer": "This manifest captures the fixed reasoning configuration. Any deviation from this configuration should be treated as a critical system change requiring re-verification."
+}

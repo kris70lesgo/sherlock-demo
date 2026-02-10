@@ -1,0 +1,26 @@
+{
+  "incident_id": "INC-123",
+  "sherlock_version": "1.0.0",
+  "provenance_generated_at": "2026-02-09T00:15:00Z",
+  "artifacts": {
+    "incident_bundle": "sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
+    "scope_audit": "sha256:b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678",
+    "postmortem": "sha256:c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456789a",
+    "review_record": "sha256:d4e5f6789012345678901234567890abcdef1234567890abcdef123456789ab",
+    "ikr": "sha256:e5f6789012345678901234567890abcdef1234567890abcdef123456789abc1"
+  },
+  "executed_phases": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "reasoning_manifest_hash": "sha256:7c8f9a2b3d4e5f6a7b8c9d0e1f2a3b4c",
+  "verification": {
+    "all_artifacts_present": true,
+    "mandatory_phases_complete": true,
+    "governance_enforced": true
+  }
+}
