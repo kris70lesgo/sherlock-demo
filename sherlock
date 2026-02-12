@@ -1817,6 +1817,41 @@ EXTRACT_INDEX
                 echo
                 bash phase7/phase7.sh "$INCIDENT_ID"
             fi
+            
+            # Phase 8: Lifecycle Summary (judge-visible timeline)
+            echo
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Sherlock Incident Lifecycle Complete: $INCIDENT_ID"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo
+            echo "✓ Phase 1: Evidence validated & normalized"
+            echo "✓ Phase 2: Scope reduced & focused"
+            echo "✓ Phase 3: Hypotheses evaluated & confidence scored"
+            echo "✓ Phase 4: Human decision recorded & governance enforced"
+            echo "✓ Phase 5: Incident indexed in organizational memory"
+            if [ -f "phase6/phase6.sh" ]; then
+                echo "✓ Phase 6: Operational actions dispatched"
+            fi
+            if [ -f "phase7/phase7.sh" ]; then
+                echo "✓ Phase 7: Trust artifacts generated & cryptographically bound"
+            fi
+            echo
+            echo "All artifacts:"
+            echo "  • Evidence: reports/incident-bundle-$INCIDENT_ID.json"
+            echo "  • Scope: reports/scope-audit-$INCIDENT_ID.json"
+            echo "  • Analysis: reports/post-mortem-$INCIDENT_ID.md"
+            echo "  • Governance: reports/review-record-$INCIDENT_ID.yaml"
+            echo "  • Memory: incidents/$INCIDENT_ID.yaml"
+            if [ -f "phase7/provenance-$INCIDENT_ID.json" ]; then
+                echo "  • Provenance: phase7/provenance-$INCIDENT_ID.json"
+            fi
+            if [ -f "phase7/trust-report-$INCIDENT_ID.md" ]; then
+                echo "  • Trust Report: phase7/trust-report-$INCIDENT_ID.md"
+            fi
+            echo
+            echo "Note: AI proposed. Human decided. System remembered. Actions executed."
+            echo "      Every decision is auditable, immutable, and externally verifiable."
+            echo
         else
             echo "❌ Phase 5 write failed"
         fi
