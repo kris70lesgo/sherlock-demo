@@ -1,0 +1,92 @@
+# Incident Coordination Record: INC-456
+# Multi-Service Incident Declaration
+#
+# Purpose: Documents which services are involved in an incident
+#          and their relationship to the failure
+#
+# IMPORTANT: This does NOT determine root cause.
+#            Each service undergoes independent analysis and governance.
+
+incident_id: INC-456
+
+declared_by:
+  name: Alice Chen
+  role: Incident Commander
+  team: SRE-Core
+  timestamp: 2026-02-12T18:45:00Z
+
+incident_title: "Authentication failures cascade to API Gateway and Storage"
+
+incident_severity: SEV-1
+
+services:
+  - name: storage_service
+    role: primary_candidate
+    justification: "Storage latency preceded all other alerts by 5 minutes"
+    lead_investigator: "Dave Miller (SRE-Storage)"
+
+  - name: api-gateway
+    role: downstream_impact
+    justification: "Retry storm amplified storage issues but did not cause them"
+    lead_investigator: "Eve Johnson (Platform-API)"
+
+  - name: auth-service
+    role: symptom_only
+    justification: "First alert but no auth-specific failures detected"
+    lead_investigator: "Frank Lee (Security-AuthZ)"
+
+coordination_notes:
+  - "Auth failures triggered retry storm in api-gateway at 18:30 UTC"
+  - "Storage latency began at 18:25 UTC (5 minutes before auth alerts)"
+  - "No auth service defects identified - alert was symptom of downstream issues"
+  - "API Gateway amplified problem through aggressive retries"
+  - "Root cause investigation focused on storage_service resource exhaustion"
+
+timeline:
+  - time: "18:25 UTC"
+    event: "Storage latency increase detected"
+    service: storage_service
+  
+  - time: "18:27 UTC"
+    event: "File descriptor warnings in storage logs"
+    service: storage_service
+  
+  - time: "18:30 UTC"
+    event: "Auth failures begin (downstream symptom)"
+    service: auth-service
+  
+  - time: "18:31 UTC"
+    event: "API Gateway retry storm initiated"
+    service: api-gateway
+  
+  - time: "18:35 UTC"
+    event: "Incident declared SEV-1"
+    service: all
+
+escalation:
+  war_room: "#incident-456"
+  bridge: "https://zoom.us/incident-456"
+  status_page: "https://status.company.com/incident-456"
+
+# Service role definitions:
+#
+# primary_candidate:
+#   - Most likely root cause
+#   - Must have finalized Phase 4 review to close incident
+#   - Gets full remediation tracking
+#
+# downstream_impact:
+#   - Affected by primary but not causal
+#   - May have contributing factors worth addressing
+#   - Gets remediation if issues found
+#
+# symptom_only:
+#   - Surfaced alert but no fault
+#   - No remediation required
+#   - Notification only in Phase 6
+#
+# CRITICAL: These roles are DECLARED by incident commander,
+#           not inferred by AI or automation.
+#
+# DO NOT EDIT DURING ACTIVE INCIDENT
+# Changes must go through incident commander approval

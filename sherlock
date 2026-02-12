@@ -1,7 +1,60 @@
 #!/usr/bin/env bash
 set -e
 
+# Incident Lifecycle State Management
+if [ "$1" = "status" ]; then
+    INCIDENT_ID="$2"
+    ACTION="${3:-display}"
+    
+    if [ -z "$INCIDENT_ID" ]; then
+        echo "Usage:"
+        echo "  sherlock status <incident_id>                    # Display current status"
+        echo "  sherlock status <incident_id> set <state>        # Change state"
+        echo
+        echo "Valid states: OPEN | MITIGATING | MONITORING | RESOLVED | POSTMORTEM_COMPLETE"
+        exit 1
+    fi
+    
+    if [ "$ACTION" = "set" ]; then
+        NEW_STATE="$4"
+        
+        if [ -z "$NEW_STATE" ]; then
+            echo "Error: State required"
+            echo "Usage: sherlock status <incident_id> set <state>"
+            exit 1
+        fi
+        
+        # Prompt for user info
+        read -p "Your name: " USER_NAME
+        read -p "Your role [Incident Commander/SRE/SRE Lead]: " USER_ROLE
+        read -p "Your identifier (email): " USER_ID
+        read -p "Notes (optional): " NOTES
+        
+        python3 ./incidents/validate-status.py "$INCIDENT_ID" set "$NEW_STATE" "$USER_NAME" "$USER_ROLE" "$USER_ID" "$NOTES"
+    else
+        python3 ./incidents/validate-status.py "$INCIDENT_ID" display
+    fi
+    
+    exit 0
+fi
+
 # Phase 5: Check for history command first
+if [ "$1" = "summarize" ]; then
+    # Multi-service incident summary generator
+    INCIDENT_ID="$2"
+    
+    if [ -z "$INCIDENT_ID" ]; then
+        echo "Usage: sherlock summarize <incident_id>"
+        echo
+        echo "Generates multi-service incident summary by aggregating"
+        echo "per-service analyses while preserving service sovereignty."
+        exit 1
+    fi
+    
+    exec ./incidents/generate-summary.sh "$INCIDENT_ID"
+    exit 0
+fi
+
 if [ "$1" = "history" ]; then
     shift  # Remove 'history' from args
     
@@ -222,13 +275,73 @@ HISTORY_QUERY
     exit 0
 fi
 
-INCIDENT_ID="INC-123"
-SCOPE_FILE="incident-scope.json"
+# Parse investigate command arguments
+if [ "$1" = "investigate" ]; then
+    shift  # Remove 'investigate' from args
+    
+    # Parse incident ID and service
+    INCIDENT_ID="${1:-INC-123}"
+    shift || true
+    
+    # Parse optional flags
+    SERVICE_SCOPE=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --service)
+                SERVICE_SCOPE="$2"
+                shift 2
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Usage: sherlock investigate <incident_id> [--service <service_name>]"
+                exit 1
+                ;;
+        esac
+    done
+else
+    # Legacy mode: no command specified, assume investigate INC-123
+    INCIDENT_ID="INC-123"
+    SERVICE_SCOPE=""
+    echo "ℹ️  Legacy mode: use 'sherlock investigate <incident_id>' for explicit investigation"
+    echo
+fi
 
-echo "ℹ️  Demo mode: using simulated incident data (INC-123)"
+# Display coordination context if multi-service
+if [ -n "$SERVICE_SCOPE" ]; then
+    echo "🔍 Multi-Service Investigation"
+    echo "   Incident: $INCIDENT_ID"
+    echo "   Service: $SERVICE_SCOPE"
+    echo
+    
+    # Validate coordination
+    python3 ./incidents/validate-coordination.py "$INCIDENT_ID" "$SERVICE_SCOPE" validate
+    python3 ./incidents/validate-coordination.py "$INCIDENT_ID" "$SERVICE_SCOPE" display
+else
+    echo "🔍 Sherlock investigating incident $INCIDENT_ID"
+    echo
+fi
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LIFECYCLE GATE: Investigation Phase (Phases 1-3)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo "🔒 Checking incident lifecycle state..."
+python3 ./incidents/validate-status.py "$INCIDENT_ID" check investigate
 echo
-echo "🔍 Sherlock investigating incident $INCIDENT_ID"
-echo
+
+# Determine scope file
+if [ -n "$SERVICE_SCOPE" ]; then
+    SCOPE_FILE="incident-scope-${INCIDENT_ID}-${SERVICE_SCOPE}.json"
+    
+    # For demo, if service-specific scope doesn't exist, use default
+    if [[ ! -f "$SCOPE_FILE" ]]; then
+        echo "⚠️  Service-specific scope not found: $SCOPE_FILE"
+        echo "   Using default scope (production would require service-specific evidence)"
+        SCOPE_FILE="incident-scope.json"
+    fi
+else
+    SCOPE_FILE="incident-scope.json"
+fi
 
 # Validate scope file exists
 if [[ ! -f "$SCOPE_FILE" ]]; then
@@ -239,9 +352,17 @@ fi
 echo "📋 Loading incident scope from $SCOPE_FILE"
 
 # Extract metadata from scope
-SERVICE=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['service'])")
-START_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['start'])")
-END_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['end'])")
+if [ -n "$SERVICE_SCOPE" ]; then
+    # Override service from scope with command line
+    SERVICE="$SERVICE_SCOPE"
+    START_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['start'])")
+    END_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['end'])")
+else
+    SERVICE=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['service'])")
+    START_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['start'])")
+    END_TIME=$(python3 -c "import json; print(json.load(open('$SCOPE_FILE'))['time_window']['end'])")
+fi
+
 ENVIRONMENT="demo"
 TIMEZONE="UTC"
 
@@ -1132,8 +1253,14 @@ CRITICAL REQUIREMENTS:
 - Contributing factors must NOT be listed as separate hypotheses
 - Root cause selection must reference hypothesis elimination"
 
-OUTPUT="reports/postmortem-$INCIDENT_ID.md"
-PROMPT_FILE="reports/copilot-prompt-$INCIDENT_ID.txt"
+# Multi-service: Use service-specific filenames
+if [ -n "$SERVICE_SCOPE" ]; then
+    OUTPUT="reports/postmortem-$INCIDENT_ID-$SERVICE_SCOPE.md"
+    PROMPT_FILE="reports/copilot-prompt-$INCIDENT_ID-$SERVICE_SCOPE.txt"
+else
+    OUTPUT="reports/postmortem-$INCIDENT_ID.md"
+    PROMPT_FILE="reports/copilot-prompt-$INCIDENT_ID.txt"
+fi
 
 # Save prompt
 cat <<EOF > "$PROMPT_FILE"
@@ -1286,6 +1413,14 @@ else
     echo "📄 Output: $OUTPUT"
 fi
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LIFECYCLE GATE: RCA Finalization (Phase 4)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo
+echo "🔒 Checking incident lifecycle state for RCA finalization..."
+python3 ./incidents/validate-status.py "$INCIDENT_ID" check finalize
+echo
+
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📋 Phase 4: Human Review & Decision Accountability"
@@ -1397,6 +1532,28 @@ read -p "Reviewer name: " REVIEWER_NAME
 read -p "Reviewer role [Incident Commander/SRE/Maintainer]: " REVIEWER_ROLE
 read -p "Reviewer identifier (email/username): " REVIEWER_ID
 
+# Service Ownership: Validate authority for this service
+echo
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🔐 Validating Service Ownership Authority"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo
+
+if [ -f "services/${SERVICE}.yaml" ]; then
+    # Validate reviewer has authority for this service
+    python3 services/validate-service-policy.py "$SERVICE" "$REVIEWER_NAME" "$REVIEWER_ROLE" validate || {
+        echo "❌ Service ownership validation failed"
+        echo "   Reviewer does not have authority for service: $SERVICE"
+        exit 1
+    }
+    echo "✓ Service ownership validated"
+    echo
+else
+    echo "⚠️  No service policy found for: $SERVICE"
+    echo "   Proceeding without ownership validation (demo mode)"
+    echo
+fi
+
 DECISION_LABEL="DRAFT"
 FINAL_ROOT_CAUSE="$PRIMARY_CAUSE"
 FINAL_CONFIDENCE="$CONFIDENCE"
@@ -1478,7 +1635,11 @@ if [[ ! "$FINALIZE" =~ ^[Nn]$ ]]; then
 fi
 
 # Generate Review Record
-REVIEW_RECORD="reports/review-record-$INCIDENT_ID.yaml"
+if [ -n "$SERVICE_SCOPE" ]; then
+    REVIEW_RECORD="reports/review-record-$INCIDENT_ID-$SERVICE_SCOPE.yaml"
+else
+    REVIEW_RECORD="reports/review-record-$INCIDENT_ID.yaml"
+fi
 REVIEW_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 echo
@@ -1612,10 +1773,22 @@ if [ "$APPROVAL_STATUS" = "FINALIZED" ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo
     
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # LIFECYCLE GATE: Memory Write (Phase 5)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    echo "🔒 Checking incident lifecycle state for memory write..."
+    python3 ./incidents/validate-status.py "$INCIDENT_ID" check memory
+    echo
+    
     INCIDENT_STORE="incidents"
     mkdir -p "$INCIDENT_STORE"
     
-    INCIDENT_FILE="$INCIDENT_STORE/$INCIDENT_ID.yaml"
+    # Multi-service: Use service-specific IKR filename
+    if [ -n "$SERVICE_SCOPE" ]; then
+        INCIDENT_FILE="$INCIDENT_STORE/$INCIDENT_ID-$SERVICE_SCOPE.yaml"
+    else
+        INCIDENT_FILE="$INCIDENT_STORE/$INCIDENT_ID.yaml"
+    fi
     
     # Check for duplicate (append-only protection)
     if [ -f "$INCIDENT_FILE" ]; then
@@ -1807,15 +1980,56 @@ EXTRACT_INDEX
             echo "   • Query with: ./sherlock history"
             
             # Phase 6: Operational Integration (optional, read-only)
-            if [ -f "phase6/phase6.sh" ]; then
+            if [ -f "adapters/operational-integration/phase6.sh" ]; then
                 echo
-                bash phase6/phase6.sh "$INCIDENT_ID"
+                
+                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                # LIFECYCLE GATE: Action Execution (Phase 6)
+                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                echo "🔒 Checking incident lifecycle state for action execution..."
+                python3 ./incidents/validate-status.py "$INCIDENT_ID" check actions
+                echo
+                
+                # Check coordination role for multi-service incidents
+                if [ -n "$SERVICE_SCOPE" ]; then
+                    COORDINATION_FILE="incidents/${INCIDENT_ID}.coordination.yaml"
+                    if [ -f "$COORDINATION_FILE" ]; then
+                        SERVICE_ROLE=$(grep -A 2 "name: $SERVICE_SCOPE$" "$COORDINATION_FILE" | grep "role:" | sed 's/.*role: *//')
+                        
+                        if [ "$SERVICE_ROLE" = "symptom_only" ]; then
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "Phase 6: Operational Integration - SKIPPED"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo
+                            echo "Service role: symptom_only"
+                            echo "This service surfaced alerts but contains no fault."
+                            echo "No remediation required - notification only."
+                            echo
+                        else
+                            bash adapters/operational-integration/phase6.sh "$INCIDENT_ID" "$SERVICE" "$REVIEW_RECORD"
+                        fi
+                    else
+                        # No coordination file, proceed normally
+                        bash adapters/operational-integration/phase6.sh "$INCIDENT_ID" "$SERVICE" "$REVIEW_RECORD"
+                    fi
+                else
+                    # Single-service incident, proceed normally
+                    bash adapters/operational-integration/phase6.sh "$INCIDENT_ID" "$SERVICE" "$REVIEW_RECORD"
+                fi
             fi
             
             # Phase 7: Trust, Assurance & Verifiability (optional, observational)
-            if [ -f "phase7/phase7.sh" ]; then
+            if [ -f "adapters/trust-verification/phase7.sh" ]; then
                 echo
-                bash phase7/phase7.sh "$INCIDENT_ID"
+                
+                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                # LIFECYCLE GATE: Trust Artifacts (Phase 7)
+                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                echo "🔒 Checking incident lifecycle state for trust artifacts..."
+                python3 ./incidents/validate-status.py "$INCIDENT_ID" check trust
+                echo
+                
+                bash adapters/trust-verification/phase7.sh "$INCIDENT_ID"
             fi
             
             # Phase 8: Lifecycle Summary (judge-visible timeline)
@@ -1829,24 +2043,32 @@ EXTRACT_INDEX
             echo "✓ Phase 3: Hypotheses evaluated & confidence scored"
             echo "✓ Phase 4: Human decision recorded & governance enforced"
             echo "✓ Phase 5: Incident indexed in organizational memory"
-            if [ -f "phase6/phase6.sh" ]; then
+            if [ -f "adapters/operational-integration/phase6.sh" ]; then
                 echo "✓ Phase 6: Operational actions dispatched"
             fi
-            if [ -f "phase7/phase7.sh" ]; then
+            if [ -f "adapters/trust-verification/phase7.sh" ]; then
                 echo "✓ Phase 7: Trust artifacts generated & cryptographically bound"
             fi
             echo
             echo "All artifacts:"
-            echo "  • Evidence: reports/incident-bundle-$INCIDENT_ID.json"
-            echo "  • Scope: reports/scope-audit-$INCIDENT_ID.json"
-            echo "  • Analysis: reports/post-mortem-$INCIDENT_ID.md"
-            echo "  • Governance: reports/review-record-$INCIDENT_ID.yaml"
-            echo "  • Memory: incidents/$INCIDENT_ID.yaml"
-            if [ -f "phase7/provenance-$INCIDENT_ID.json" ]; then
-                echo "  • Provenance: phase7/provenance-$INCIDENT_ID.json"
+            if [ -n "$SERVICE_SCOPE" ]; then
+                echo "  • Evidence: reports/incident-bundle-$INCIDENT_ID.json"
+                echo "  • Scope: reports/scope-audit-$INCIDENT_ID.json"
+                echo "  • Analysis: reports/postmortem-$INCIDENT_ID-$SERVICE_SCOPE.md"
+                echo "  • Governance: reports/review-record-$INCIDENT_ID-$SERVICE_SCOPE.yaml"
+                echo "  • Memory: incidents/$INCIDENT_ID-$SERVICE_SCOPE.yaml"
+            else
+                echo "  • Evidence: reports/incident-bundle-$INCIDENT_ID.json"
+                echo "  • Scope: reports/scope-audit-$INCIDENT_ID.json"
+                echo "  • Analysis: reports/postmortem-$INCIDENT_ID.md"
+                echo "  • Governance: reports/review-record-$INCIDENT_ID.yaml"
+                echo "  • Memory: incidents/$INCIDENT_ID.yaml"
             fi
-            if [ -f "phase7/trust-report-$INCIDENT_ID.md" ]; then
-                echo "  • Trust Report: phase7/trust-report-$INCIDENT_ID.md"
+            if [ -f "adapters/trust-verification/provenance-$INCIDENT_ID.json" ]; then
+                echo "  • Provenance: adapters/trust-verification/provenance-$INCIDENT_ID.json"
+            fi
+            if [ -f "adapters/trust-verification/trust-report-$INCIDENT_ID.md" ]; then
+                echo "  • Trust Report: adapters/trust-verification/trust-report-$INCIDENT_ID.md"
             fi
             echo
             echo "Note: AI proposed. Human decided. System remembered. Actions executed."

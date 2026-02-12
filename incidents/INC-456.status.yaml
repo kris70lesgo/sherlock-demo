@@ -1,0 +1,32 @@
+# Incident Lifecycle State
+# Purpose: Gate pipeline behavior based on real-world incident progression
+# Rule: Human sets state. System enforces. AI never changes state.
+
+incident_id: INC-456
+
+status: OPEN
+# Allowed values:
+#   OPEN                   - Incident declared, investigation starting
+#   MITIGATING            - Actions/changes in progress
+#   MONITORING            - Waiting to confirm stability
+#   RESOLVED              - Incident over, RCA allowed
+#   POSTMORTEM_COMPLETE   - Analysis finalized, memory write allowed
+
+set_by:
+  name: "Alice Chen"
+  role: "Incident Commander"
+  identifier: "alice@example.com"
+  team: "SRE-Core"
+
+updated_at: "2024-01-15T18:35:00Z"
+
+history:
+  - state: OPEN
+    set_by: "Alice Chen"
+    timestamp: "2024-01-15T18:35:00Z"
+    notes: "Incident declared - cascading latency across storage, API Gateway, auth"
+
+notes:
+  - "Multi-service incident affecting storage_service, api-gateway, auth-service"
+  - "Investigation in progress across all teams"
+  - "Primary candidate: storage_service"

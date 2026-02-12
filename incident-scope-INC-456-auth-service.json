@@ -1,0 +1,28 @@
+{
+  "incident_id": "INC-456",
+  "service": "auth-service",
+  "time_window": {
+    "start": "2024-01-15T18:30:00Z",
+    "end": "2024-01-15T19:45:00Z"
+  },
+  "initial_alert": {
+    "source": "pagerduty",
+    "metric": "auth_service_timeout_rate",
+    "threshold_exceeded": "5% (threshold: 0.1%)"
+  },
+  "impact": {
+    "user_facing": true,
+    "severity": "SEV1",
+    "affected_requests": "estimated 45,000 requests"
+  },
+  "evidence_sources": {
+    "logs": "evidence/logs-auth.json",
+    "metrics": "evidence/metrics.json",
+    "deployments": "evidence/deployments.json"
+  },
+  "related_services": [
+    "storage_service",
+    "api-gateway"
+  ],
+  "notes": "First alert but no auth-specific failures identified"
+}

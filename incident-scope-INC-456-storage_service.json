@@ -1,0 +1,27 @@
+{
+  "incident_id": "INC-456",
+  "service": "storage_service",
+  "time_window": {
+    "start": "2024-01-15T18:25:00Z",
+    "end": "2024-01-15T19:45:00Z"
+  },
+  "initial_alert": {
+    "source": "cloudwatch",
+    "metric": "storage_latency_p99",
+    "threshold_exceeded": "5000ms (threshold: 1000ms)"
+  },
+  "impact": {
+    "user_facing": true,
+    "severity": "SEV1",
+    "affected_requests": "estimated 45,000 requests"
+  },
+  "evidence_sources": {
+    "logs": "evidence/logs-storage.json",
+    "metrics": "evidence/metrics.json",
+    "deployments": "evidence/deployments.json"
+  },
+  "related_services": [
+    "api-gateway",
+    "auth-service"
+  ]
+}

@@ -74,6 +74,13 @@ evidence/                   # Example logs (Hadoop, PostgreSQL)
 ├── deployments.json       # Deployment timeline
 └── metrics.json           # Service metrics
 
+services/                   # Service ownership & authority
+├── storage_service.yaml   # Storage service policy
+├── api-gateway.yaml       # API Gateway policy
+├── auth-service.yaml      # Auth service policy
+├── validate-service-policy.py  # Authority enforcement
+└── README.md              # Service ownership docs
+
 incidents/                  # Organizational memory (Phase 5)
 ├── INC-123.yaml           # MODIFIED decision
 ├── INC-124.yaml           # ACCEPTED decision
@@ -172,9 +179,11 @@ No black boxes. No "trust us."
 
 ### ✅ Phase 4: Human Governance
 - **Mandatory human review**
+- **Service-based authority gating** (role enforcement)
 - ACCEPT, MODIFY, or REJECT decisions
 - Confidence adjustment tracking
 - Reviewer identification
+- Decision constraints enforcement
 
 ### ✅ Phase 5: Organizational Memory
 - Append-only incident database
@@ -224,12 +233,20 @@ No black boxes. No "trust us."
 
 ## 📜 Documentation
 
+**Judge-facing documentation:**
+
 | Document | Purpose |
 |----------|---------|
-| [DEMO.md](DEMO.md) | Judge-first demo script |
+| [README.md](README.md) | This file — quick start guide |
+| [DEMO.md](DEMO.md) | Complete demo walkthrough |
+| [DESIGN.md](DESIGN.md) | System architecture & design |
 | [INVARIANTS.md](INVARIANTS.md) | Architectural guarantees |
-| [PHASE6-OPERATIONAL-INTEGRATION.md](PHASE6-OPERATIONAL-INTEGRATION.md) | Operational integration |
-| [phase7/README.md](phase7/README.md) | Trust & verification |
+| [LIMITATIONS.md](LIMITATIONS.md) | Honest constraints |
+
+**Full design and validation documentation is available in [/docs-internal](docs-internal/README.md):**
+- Phase implementation details ([docs-internal/phases/](docs-internal/phases/))
+- Enterprise enhancements ([docs-internal/governance/](docs-internal/governance/))
+- Validation and test reports ([docs-internal/validation/](docs-internal/validation/))
 
 ---
 
