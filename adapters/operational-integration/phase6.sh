@@ -16,7 +16,7 @@ fi
 # Locate artifacts
 REVIEW_RECORD="reports/review-record-${INCIDENT_ID}.yaml"
 IKR="incidents/${INCIDENT_ID}.yaml"
-CONFIG="phase6/config/phase6.yaml"
+CONFIG="adapters/operational-integration/config/phase6.yaml"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Phase 6: Operational Integration"
@@ -61,7 +61,7 @@ echo "✓ Incident $INCIDENT_ID is finalized"
 echo
 
 # Extract decision type to determine dispatch rules
-DECISION_TYPE=$(grep "^decision:" "$IKR" | awk '{print $2}')
+DECISION_TYPE=$(grep -A 1 "^decision:" "$IKR" | grep "type:" | awk '{print $2}' | tr -d '#' | head -1)
 echo "Decision type: $DECISION_TYPE"
 echo
 
@@ -90,7 +90,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo
 
 # Execute dispatchers
-DISPATCHER_DIR="phase6/dispatchers"
+DISPATCHER_DIR="adapters/operational-integration/dispatchers"
 
 for dispatcher in "${DISPATCHERS[@]}"; do
     DISPATCHER_SCRIPT="$DISPATCHER_DIR/${dispatcher}.sh"

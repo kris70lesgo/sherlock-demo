@@ -1,0 +1,29 @@
+# Incident Lifecycle State
+# Purpose: Gate pipeline behavior based on real-world incident progression
+# Rule: Human sets state. System enforces. AI never changes state.
+
+incident_id: INC-123
+
+status: OPEN
+# Allowed values:
+#   OPEN                   - Incident declared, investigation starting
+#   MITIGATING            - Actions/changes in progress
+#   MONITORING            - Waiting to confirm stability
+#   RESOLVED              - Incident over, RCA allowed
+#   POSTMORTEM_COMPLETE   - Analysis finalized, memory write allowed
+
+set_by:
+  name: "sherlock-demo"
+  role: "Incident Commander"
+  identifier: "demo-user"
+
+updated_at: "2026-02-14T13:34:38Z"
+
+history:
+  - state: OPEN
+    set_by: "sherlock-demo"
+    timestamp: "2026-02-14T13:34:38Z"
+    notes: "Investigation started"
+
+notes:
+  - "Investigation started"

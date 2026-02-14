@@ -1,6 +1,6 @@
 {
   "incident_id": "INC-123",
-  "provenance_generated": "2026-02-09T16:31:37.106387Z",
+  "provenance_generated": "2026-02-14T07:39:41.263614Z",
   "sherlock_version": "1.0.0",
   "reasoning_protocol": {
     "type": "hypothesis-based",
@@ -54,8 +54,8 @@
     "append_only_memory": true
   },
   "external_verifiability": {
-    "reasoning_manifest": "phase7/reasoning-manifest.json",
-    "provenance_record": "phase7/provenance-INC-123.json",
+    "reasoning_manifest": "adapters/trust-verification/reasoning-manifest.json",
+    "provenance_record": "adapters/trust-verification/provenance-INC-123.json",
     "trust_report": "phase7/trust-report-INC-123.md",
     "all_artifact_hashes_computed": true
   },

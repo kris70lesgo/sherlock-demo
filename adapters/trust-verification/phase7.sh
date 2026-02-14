@@ -19,7 +19,7 @@ IKR="incidents/${INCIDENT_ID}.yaml"
 POST_MORTEM="reports/post-mortem-${INCIDENT_ID}.md"
 INCIDENT_BUNDLE="reports/incident-bundle-${INCIDENT_ID}.json"
 SCOPE_AUDIT="reports/scope-audit-${INCIDENT_ID}.json"
-REASONING_MANIFEST="phase7/reasoning-manifest.json"
+REASONING_MANIFEST="adapters/trust-verification/reasoning-manifest.json"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Phase 7: Trust, Assurance & Verifiability"
@@ -77,7 +77,7 @@ echo "✓ IKR:               sha256:${IKR_HASH:0:16}..."
 echo
 
 # Step 3: Generate Provenance Record
-PROVENANCE_FILE="phase7/provenance-${INCIDENT_ID}.json"
+PROVENANCE_FILE="adapters/trust-verification/provenance-${INCIDENT_ID}.json"
 
 echo "Generating incident provenance record..."
 echo "─────────────────────────────────────────────────────────────"
@@ -143,7 +143,7 @@ provenance = {
         "append_only_memory": manifest["audit_trail"]["append_only_memory"]
     },
     "external_verifiability": {
-        "reasoning_manifest": "phase7/reasoning-manifest.json",
+        "reasoning_manifest": "adapters/trust-verification/reasoning-manifest.json",
         "provenance_record": output_path,
         "trust_report": f"phase7/trust-report-{incident_id}.md",
         "all_artifact_hashes_computed": True
@@ -165,12 +165,10 @@ export POST_MORTEM_HASH
 export REVIEW_RECORD_HASH
 export IKR_HASH
 
-python3 - "$INCIDENT_ID" "$REASONING_MANIFEST" "$PROVENANCE_FILE"
-
 echo
 
 # Step 4: Generate Trust Report
-TRUST_REPORT="phase7/trust-report-${INCIDENT_ID}.md"
+TRUST_REPORT="adapters/trust-verification/trust-report-${INCIDENT_ID}.md"
 
 echo "Generating trust report..."
 echo "─────────────────────────────────────────────────────────────"
@@ -349,7 +347,7 @@ shasum -a 256 incidents/{incident_id}.yaml
 cat {provenance['external_verifiability']['provenance_record']}
 
 # Verify reasoning manifest hasn't changed
-shasum -a 256 phase7/reasoning-manifest.json
+shasum -a 256 adapters/trust-verification/reasoning-manifest.json
 ```
 
 ---
@@ -364,8 +362,6 @@ with open(output_path, 'w') as f:
 
 print(f"✓ Trust report generated: {output_path}")
 GENERATE_TRUST_REPORT
-
-python3 - "$INCIDENT_ID" "$PROVENANCE_FILE" "$REASONING_MANIFEST" "$TRUST_REPORT" "$REVIEW_RECORD" "$IKR"
 
 echo
 

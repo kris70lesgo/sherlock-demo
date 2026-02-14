@@ -1,0 +1,11 @@
+# Sherlock Dependencies
+
+# Core dependencies (optional for demo)
+# Install with: pip install -r requirements.txt
+
+# Service ownership validation (Part 1 enhancement)
+pyyaml>=6.0
+
+# Note: The demo works without these dependencies.
+# Service ownership validation will be skipped if PyYAML is not installed.
+# For production deployments, install all dependencies for full feature set.
