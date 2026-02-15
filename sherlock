@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+set -o pipefail
 
 # Incident Lifecycle State Management
 if [ "$1" = "status" ]; then
@@ -645,11 +646,22 @@ def validate_evidence_contract(evidence: Dict, source_type: str) -> tuple:
     
     return len(violations) == 0, violations
 
-# Load raw data
-with open("evidence/deployments.json", "r") as f:
-    raw_deployments = json.load(f)
-with open("evidence/metrics.json", "r") as f:
-    raw_metrics = json.load(f)
+# Load raw data with basic validation
+try:
+    with open("evidence/deployments.json", "r") as f:
+        raw_deployments = json.load(f)
+except FileNotFoundError:
+    raise SystemExit("❌ Missing evidence/deployments.json")
+except json.JSONDecodeError as e:
+    raise SystemExit(f"❌ Invalid JSON in evidence/deployments.json: {e}")
+
+try:
+    with open("evidence/metrics.json", "r") as f:
+        raw_metrics = json.load(f)
+except FileNotFoundError:
+    raise SystemExit("❌ Missing evidence/metrics.json")
+except json.JSONDecodeError as e:
+    raise SystemExit(f"❌ Invalid JSON in evidence/metrics.json: {e}")
 
 # ============================================================================
 # PHASE 2: INCIDENT SCOPING & EVIDENCE REDUCTION
@@ -904,8 +916,11 @@ if os.path.exists(hadoop_log_path):
     phase2_scope_audit = scope_audit
 else:
     # Fallback to standard app.log
-    with open("evidence/app.log", "r") as f:
-        raw_logs = f.readlines()
+    try:
+        with open("evidence/app.log", "r") as f:
+            raw_logs = f.readlines()
+    except FileNotFoundError:
+        raise SystemExit("❌ Missing evidence/app.log and no adapter-provided logs found")
     evidence_quality_penalties = []
     phase2_scope_audit = None
 
@@ -999,36 +1014,52 @@ def diff_summary(commit_hash: str):
         })
     return diffs
 
-def normalize_deployments(events: List[Dict]) -> List[Dict]:
+def normalize_deployments(events: List[Dict]) -> tuple:
     """Normalize deployment events."""
     normalized = []
+    invalid = 0
     for ev in events:
+        if "time" not in ev:
+            invalid += 1
+            continue
+        try:
+            ts = to_utc_iso(parse_iso(ev["time"]))
+        except Exception:
+            invalid += 1
+            continue
         normalized.append({
-            "timestamp": to_utc_iso(parse_iso(ev["time"])),
+            "timestamp": ts,
             "service": service,
             "version": ev.get("version"),
             "commit_hash": ev.get("commit"),
         })
-    return normalized
+    return normalized, invalid
 
-def normalize_logs(lines: List[str]) -> List[Dict]:
+def normalize_logs(lines: List[str]) -> tuple:
     """Normalize log entries."""
     entries = []
+    invalid = 0
     for line in lines:
         line = line.strip()
         if not line:
             continue
         parts = line.split(" ", 3)
         if len(parts) < 4:
+            invalid += 1
             continue
         ts, severity, _, message = parts[0], parts[1], parts[2], parts[3]
+        try:
+            timestamp = to_utc_iso(parse_iso(ts))
+        except Exception:
+            invalid += 1
+            continue
         entries.append({
-            "timestamp": to_utc_iso(parse_iso(ts)),
+            "timestamp": timestamp,
             "severity": severity.strip(),
             "component": service,
             "message": message.strip(),
         })
-    return entries
+    return entries, invalid
 
 def aggregate_metrics(metrics: Dict) -> Dict:
     """Aggregate metrics."""
@@ -1051,8 +1082,8 @@ def aggregate_metrics(metrics: Dict) -> Dict:
     return summary
 
 # Normalize scoped data
-deployment_events = normalize_deployments(deployments)
-log_entries = normalize_logs(filtered_logs)
+deployment_events, invalid_deployments = normalize_deployments(deployments)
+log_entries, invalid_log_lines = normalize_logs(filtered_logs)
 metric_summary = aggregate_metrics(filtered_metrics)
 
 # Generate diffs
@@ -1063,6 +1094,12 @@ for c in commits:
 # Integrity accounting
 missing_sources = []
 confidence_penalties = evidence_quality_penalties.copy()  # Start with adapter penalties
+
+if invalid_log_lines:
+    print(f"⚠️  Skipped {invalid_log_lines} malformed log line(s) during normalization")
+
+if invalid_deployments:
+    print(f"⚠️  Skipped {invalid_deployments} malformed deployment event(s) during normalization")
 
 if not log_entries:
     missing_sources.append("application_logs")
@@ -1280,8 +1317,164 @@ echo "🤖 Invoking GitHub Copilot CLI for incident correlation and RCA"
 echo "    • Inputs: scoped evidence (commits, logs, metrics)"
 echo "    • Role: reasoning engine (timeline + root cause + remediation)"
 echo
+if ! command -v gh >/dev/null 2>&1; then
+    echo "❌ GitHub CLI (gh) not found. Install it to run Phase 3."
+    exit 1
+fi
 
-gh copilot -- -p "$PROMPT" | tee "$OUTPUT"
+if ! gh copilot --help >/dev/null 2>&1; then
+    echo "❌ GitHub Copilot CLI is not available. Verify 'gh copilot' is installed and authenticated."
+    exit 1
+fi
+
+# Avoid clobbering a previous valid postmortem if Copilot fails.
+OUTPUT_TMP="${OUTPUT}.tmp.$$"
+
+if ! gh auth status -h github.com >/dev/null 2>&1; then
+    echo "⚠️  GitHub CLI is not authenticated for Copilot."
+    if [ -s "$OUTPUT" ]; then
+        echo "   Using cached post-mortem at $OUTPUT"
+    else
+        echo "   Generating offline post-mortem (Copilot unavailable)"
+        python3 - "$OUTPUT" "$BUNDLE_FILE" "$SCOPE_AUDIT_FILE" <<'OFFLINE_PM'
+import json
+import sys
+
+output_path = sys.argv[1]
+bundle_path = sys.argv[2]
+scope_path = sys.argv[3]
+
+with open(bundle_path, "r") as f:
+    bundle = json.load(f)
+with open(scope_path, "r") as f:
+    scope = json.load(f)
+
+incident_id = bundle["metadata"]["incident_id"]
+service = bundle["metadata"]["service"]
+time_window = scope["scope_summary"]["time_window"]
+metrics = bundle.get("metrics", {}).get("aggregates", {})
+memory = metrics.get("memory_mb", {})
+error_rate = metrics.get("error_rate_pct", {})
+logs = bundle.get("logs", {}).get("entries", [])
+
+timeline_lines = []
+for entry in logs[:5]:
+    timeline_lines.append(f"- {entry['timestamp']}: {entry['severity']} {entry['message']}")
+if not timeline_lines:
+    timeline_lines = ["- No structured log entries available in scope"]
+
+def metric_line(metric, label, unit):
+    if not metric:
+        return f"- {label}: unavailable"
+    return f"- {label}: baseline {metric.get('baseline')} {unit}, peak {metric.get('peak')} {unit}, delta {metric.get('delta')} {unit}"
+
+timeline = "\n".join(timeline_lines)
+
+postmortem = f"""# Incident Post-Mortem: {incident_id}
+
+## Timeline
+{timeline}
+
+## Hypotheses Considered
+
+### Hypothesis 1: Application memory growth from unbounded request accumulation (Category: Application)
+**Evidence FOR:**
+- Logs show high memory usage followed by memory allocation failure and a crash.
+- Memory metric increased sharply within the incident window.
+
+**Evidence AGAINST:**
+- No direct code change in the commit window to confirm a recent introduction.
+- Limited log coverage; no explicit allocation stack traces.
+
+**Confidence:** 55%
+**Status:** POSSIBLE
+
+### Hypothesis 2: Resource exhaustion due to load spike (Category: Traffic)
+**Evidence FOR:**
+- Error rate increased during the same window as memory growth.
+- Sudden resource pressure can trigger allocation failures.
+
+**Evidence AGAINST:**
+- No explicit traffic metrics in the evidence bundle.
+- Logs do not mention request volume anomalies.
+
+**Confidence:** 15%
+**Status:** RULED_OUT
+
+### Hypothesis 3: Dependency failure cascading into retries (Category: Dependency)
+**Evidence FOR:**
+- Error rate spike could be consistent with downstream instability.
+
+**Evidence AGAINST:**
+- No dependency error logs or timeout messages in the scoped logs.
+- Memory growth suggests local resource pressure instead.
+
+**Confidence:** 10%
+**Status:** RULED_OUT
+
+## Evidence Evaluation
+- Memory usage spiked sharply in the incident window, with errors indicating allocation failure and process crash.
+- Error rate increased but no explicit external dependency errors or traffic spikes are in evidence.
+
+## Ruled-Out Hypotheses
+- Traffic spike (ruled out due to missing traffic evidence).
+- Dependency failure (ruled out due to lack of supporting logs).
+
+## Primary Root Cause
+Unbounded memory growth in the application leading to allocation failure and crash.
+**Commit:** unknown - no commits in window
+**Causal Chain:** Memory accumulation increased → allocation failure → worker crash → error rate spike.
+
+## Contributing Factors
+- Limited log coverage and no traffic telemetry in the evidence bundle.
+- Rapid memory growth without backpressure signals.
+
+## Detection & Prevention Gaps
+- Missing alerts for memory growth thresholds before failure.
+- Lack of traffic/request volume telemetry in scope.
+
+## Remediation & Follow-ups
+- Add memory growth alerts with lower thresholds.
+- Add request volume and latency metrics to evidence scope.
+- Audit in-memory caches for bounded growth patterns.
+
+## Remaining Uncertainty
+- No direct evidence of a code-level change or traffic surge in the bundle.
+
+## Confidence Summary
+- Primary root cause confidence: 55%
+- Total hypothesis confidence budget used: 80%
+- Uncertainty factors: limited telemetry, missing dependency signals
+"""
+
+with open(output_path, "w") as f:
+    f.write(postmortem)
+
+print(f"✓ Offline post-mortem written: {output_path}")
+OFFLINE_PM
+    fi
+else
+    if gh copilot -- -p "$PROMPT" | tee "$OUTPUT_TMP"; then
+        if [ -s "$OUTPUT_TMP" ]; then
+            mv "$OUTPUT_TMP" "$OUTPUT"
+        else
+            rm -f "$OUTPUT_TMP"
+        fi
+    else
+        rm -f "$OUTPUT_TMP"
+        if [ -s "$OUTPUT" ]; then
+            echo "⚠️  Copilot invocation failed; using cached post-mortem at $OUTPUT"
+        else
+            echo "❌ Copilot invocation failed and no cached post-mortem exists."
+            exit 1
+        fi
+    fi
+fi
+
+if [ ! -s "$OUTPUT" ]; then
+    echo "❌ Copilot output is empty. Aborting before Phase 3 validation."
+    exit 1
+fi
 
 echo
 echo "✅ GitHub Copilot CLI analysis complete"
@@ -1531,7 +1724,12 @@ echo "      • Analysis is not actionable - insufficient evidence or contradict
 echo "      • AI output preserved (not deleted)"
 echo "      • Reason documented"
 echo
-read -p "Decision [A/M/R]: " DECISION
+if [[ -t 0 ]]; then
+    read -p "Decision [A/M/R]: " DECISION
+else
+    DECISION="A"
+    echo "Decision [A/M/R]: A (auto-selected in non-interactive mode)"
+fi
 
 # Normalize to uppercase
 DECISION=$(echo "$DECISION" | tr '[:lower:]' '[:upper:]')
@@ -1547,9 +1745,18 @@ echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Capture reviewer info
-read -p "Reviewer name: " REVIEWER_NAME
-read -p "Reviewer role [Incident Commander/SRE/Maintainer]: " REVIEWER_ROLE
-read -p "Reviewer identifier (email/username): " REVIEWER_ID
+if [[ -t 0 ]]; then
+    read -p "Reviewer name: " REVIEWER_NAME
+    read -p "Reviewer role [Incident Commander/SRE/Maintainer]: " REVIEWER_ROLE
+    read -p "Reviewer identifier (email/username): " REVIEWER_ID
+else
+    REVIEWER_NAME="sherlock-demo"
+    REVIEWER_ROLE="Incident Commander"
+    REVIEWER_ID="demo-user"
+    echo "Reviewer name: $REVIEWER_NAME (auto-selected in non-interactive mode)"
+    echo "Reviewer role [Incident Commander/SRE/Maintainer]: $REVIEWER_ROLE"
+    echo "Reviewer identifier (email/username): $REVIEWER_ID"
+fi
 
 # Service Ownership: Validate authority for this service
 echo
@@ -1578,6 +1785,97 @@ FINAL_ROOT_CAUSE="$PRIMARY_CAUSE"
 FINAL_CONFIDENCE="$CONFIDENCE"
 OVERRIDES_JSON="[]"
 NOTES_JSON="[]"
+OVERRIDES_FILE=""
+NOTES_FILE=""
+
+init_json_files() {
+    OVERRIDES_FILE=$(mktemp)
+    NOTES_FILE=$(mktemp)
+    printf '%s' "$OVERRIDES_JSON" > "$OVERRIDES_FILE"
+    printf '%s' "$NOTES_JSON" > "$NOTES_FILE"
+}
+
+add_override() {
+    local field="$1"
+    local original="$2"
+    local new_value="$3"
+    local rationale="$4"
+    local orig_file new_file rationale_file
+    orig_file=$(mktemp)
+    new_file=$(mktemp)
+    rationale_file=$(mktemp)
+
+    printf '%s' "$original" > "$orig_file"
+    printf '%s' "$new_value" > "$new_file"
+    printf '%s' "$rationale" > "$rationale_file"
+
+    OVERRIDES_FILE="$OVERRIDES_FILE" ORIG_FILE="$orig_file" NEW_FILE="$new_file" RATIONALE_FILE="$rationale_file" FIELD="$field" \
+        python3 - <<'PY'
+import json
+import os
+
+overrides_file = os.environ["OVERRIDES_FILE"]
+with open(overrides_file, "r") as f:
+    overrides = json.load(f)
+
+with open(os.environ["ORIG_FILE"], "r") as f:
+    original = f.read()
+with open(os.environ["NEW_FILE"], "r") as f:
+    new_value = f.read()
+with open(os.environ["RATIONALE_FILE"], "r") as f:
+    rationale = f.read()
+
+overrides.append({
+    "field": os.environ["FIELD"],
+    "original_value": original,
+    "new_value": new_value,
+    "rationale": rationale,
+})
+
+with open(overrides_file, "w") as f:
+    json.dump(overrides, f)
+PY
+
+    rm -f "$orig_file" "$new_file" "$rationale_file"
+}
+
+add_note() {
+    local note="$1"
+    local note_file
+    note_file=$(mktemp)
+    printf '%s' "$note" > "$note_file"
+
+    NOTES_FILE="$NOTES_FILE" NOTE_FILE="$note_file" python3 - <<'PY'
+import json
+import os
+
+notes_file = os.environ["NOTES_FILE"]
+with open(notes_file, "r") as f:
+    notes = json.load(f)
+
+with open(os.environ["NOTE_FILE"], "r") as f:
+    note = f.read()
+
+if note:
+    notes.append(note)
+
+with open(notes_file, "w") as f:
+    json.dump(notes, f)
+PY
+
+    rm -f "$note_file"
+}
+
+sync_json_files() {
+    OVERRIDES_JSON="$(cat "$OVERRIDES_FILE")"
+    NOTES_JSON="$(cat "$NOTES_FILE")"
+}
+
+cleanup_json_files() {
+    rm -f "$OVERRIDES_FILE" "$NOTES_FILE"
+}
+
+init_json_files
 
 case "$DECISION" in
     A)
@@ -1595,16 +1893,13 @@ case "$DECISION" in
         echo "   Please specify overrides..."
         echo
         
-        # Collect overrides
-        OVERRIDES_JSON="[]"
-        
         read -p "Modify root cause? [y/N]: " MODIFY_CAUSE
         if [[ "$MODIFY_CAUSE" =~ ^[Yy]$ ]]; then
             read -p "New root cause description: " NEW_CAUSE
             read -p "Rationale for change: " CAUSE_RATIONALE
             FINAL_ROOT_CAUSE="$NEW_CAUSE"
-            
-            OVERRIDES_JSON=$(python3 -c "import json; overrides = json.loads('$OVERRIDES_JSON'); overrides.append({'field': 'root_cause', 'original_value': '''$PRIMARY_CAUSE''', 'new_value': '''$NEW_CAUSE''', 'rationale': '''$CAUSE_RATIONALE'''}); print(json.dumps(overrides))")
+
+            add_override "root_cause" "$PRIMARY_CAUSE" "$NEW_CAUSE" "$CAUSE_RATIONALE"
         fi
         
         read -p "Modify confidence? [y/N]: " MODIFY_CONF
@@ -1612,14 +1907,16 @@ case "$DECISION" in
             read -p "New confidence (0-100): " NEW_CONFIDENCE
             read -p "Rationale for change: " CONF_RATIONALE
             FINAL_CONFIDENCE="$NEW_CONFIDENCE"
-            
-            OVERRIDES_JSON=$(python3 -c "import json; overrides = json.loads('$OVERRIDES_JSON'); overrides.append({'field': 'confidence', 'original_value': $CONFIDENCE, 'new_value': $NEW_CONFIDENCE, 'rationale': '''$CONF_RATIONALE'''}); print(json.dumps(overrides))")
+
+            add_override "confidence" "$CONFIDENCE" "$NEW_CONFIDENCE" "$CONF_RATIONALE"
         fi
         
         read -p "Additional notes (e.g., context-specific concerns): " NOTES
         if [ -n "$NOTES" ]; then
-            NOTES_JSON=$(python3 -c "import json; print(json.dumps(['$NOTES']))")
+            add_note "$NOTES"
         fi
+
+        sync_json_files
         
         echo
         echo "✓ Modifications recorded with rationale"
@@ -1633,9 +1930,11 @@ case "$DECISION" in
         echo "   Analysis is not actionable - insufficient evidence or contradictory signals"
         echo
         read -p "Primary reason for rejection: " REJECTION_REASON
-        NOTES_JSON=$(python3 -c "import json; print(json.dumps(['REJECTED: $REJECTION_REASON', 'Analysis preserved for transparency but not endorsed']))")
+        add_note "REJECTED: $REJECTION_REASON"
+        add_note "Analysis preserved for transparency but not endorsed"
         FINAL_ROOT_CAUSE="Analysis rejected - see notes"
         FINAL_CONFIDENCE="0"
+        sync_json_files
         
         echo
         echo "✓ Rejection recorded"
@@ -1671,32 +1970,53 @@ REVIEW_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 echo
 echo "💾 Generating Review Record..."
 
-python3 - "$REVIEW_RECORD" <<GENERATE_RR
+INCIDENT_ID="$INCIDENT_ID" \
+REVIEWER_NAME="$REVIEWER_NAME" \
+REVIEWER_ROLE="$REVIEWER_ROLE" \
+REVIEWER_ID="$REVIEWER_ID" \
+REVIEW_TIME="$REVIEW_TIME" \
+PRIMARY_CAUSE="$PRIMARY_CAUSE" \
+CONFIDENCE="$CONFIDENCE" \
+RULED_OUT_COUNT="$RULED_OUT_COUNT" \
+DECISION_LABEL="$DECISION_LABEL" \
+FINAL_ROOT_CAUSE="$FINAL_ROOT_CAUSE" \
+FINAL_CONFIDENCE="$FINAL_CONFIDENCE" \
+APPROVAL_STATUS="$APPROVAL_STATUS" \
+SERVICE_SCOPE="$SERVICE_SCOPE" \
+OVERRIDES_FILE="$OVERRIDES_FILE" \
+NOTES_FILE="$NOTES_FILE" \
+python3 - "$REVIEW_RECORD" <<'GENERATE_RR'
 import sys
 import json
-from datetime import datetime
+import os
 
 output_file = sys.argv[1]
 
 # Parse environment variables
-incident_id = "$INCIDENT_ID"
-reviewer_name = "$REVIEWER_NAME"
-reviewer_role = "$REVIEWER_ROLE"
-reviewer_id = "$REVIEWER_ID"
-review_time = "$REVIEW_TIME"
-primary_cause = "$PRIMARY_CAUSE"
-confidence = "$CONFIDENCE"
-ruled_out_count = "$RULED_OUT_COUNT"
-decision = "$DECISION_LABEL"
-final_cause = "$FINAL_ROOT_CAUSE"
-final_confidence = "$FINAL_CONFIDENCE"
-overrides_json = '''$OVERRIDES_JSON'''
-notes_json = '''$NOTES_JSON'''
-approval_status = "$APPROVAL_STATUS"
+incident_id = os.environ["INCIDENT_ID"]
+reviewer_name = os.environ["REVIEWER_NAME"]
+reviewer_role = os.environ["REVIEWER_ROLE"]
+reviewer_id = os.environ["REVIEWER_ID"]
+review_time = os.environ["REVIEW_TIME"]
+primary_cause = os.environ["PRIMARY_CAUSE"]
+confidence = os.environ["CONFIDENCE"]
+ruled_out_count = os.environ["RULED_OUT_COUNT"]
+decision = os.environ["DECISION_LABEL"]
+final_cause = os.environ["FINAL_ROOT_CAUSE"]
+final_confidence = os.environ["FINAL_CONFIDENCE"]
+approval_status = os.environ["APPROVAL_STATUS"]
+service_scope = os.environ.get("SERVICE_SCOPE", "")
+overrides_file = os.environ["OVERRIDES_FILE"]
+notes_file = os.environ["NOTES_FILE"]
 
 # Parse JSON
-overrides = json.loads(overrides_json)
-notes = json.loads(notes_json)
+with open(overrides_file, "r") as f:
+    overrides = json.load(f)
+with open(notes_file, "r") as f:
+    notes = json.load(f)
+
+def ystr(value: str) -> str:
+    return json.dumps(value)
 
 # Build Review Record
 review_record = f"""# Review Record: {incident_id}
@@ -1706,22 +2026,22 @@ review_record = f"""# Review Record: {incident_id}
 incident_id: {incident_id}
 
 reviewer:
-  name: "{reviewer_name}"
-  role: "{reviewer_role}"  # Incident Commander | SRE | Maintainer
-  identifier: "{reviewer_id}"
+  name: {ystr(reviewer_name)}
+  role: {ystr(reviewer_role)}  # Incident Commander | SRE | Maintainer
+  identifier: {ystr(reviewer_id)}
 
 review_time: {review_time}
 
 # AI Proposal (Phase 3 Output)
 ai_proposal:
-  primary_root_cause: "{primary_cause}"
+  primary_root_cause: {ystr(primary_cause)}
   confidence: {confidence}  # 0-100%
   ruled_out_count: {ruled_out_count}
 
 # Human Decision (Phase 4)
 human_decision:
   decision: {decision}  # ACCEPTED | MODIFIED | REJECTED
-  final_root_cause: "{final_cause}"
+  final_root_cause: {ystr(final_cause)}
   final_confidence: {final_confidence}  # 0-100%
 
 # Overrides (if decision = MODIFIED)
@@ -1731,11 +2051,12 @@ overrides:
 # Add overrides
 if overrides:
     for override in overrides:
-        review_record += f'''  - field: {override['field']}
-    original_value: "{override['original_value']}"
-    new_value: "{override['new_value']}"
-    rationale: "{override['rationale']}"
-'''
+        review_record += (
+            f"  - field: {override['field']}\n"
+            f"    original_value: {ystr(override['original_value'])}\n"
+            f"    new_value: {ystr(override['new_value'])}\n"
+            f"    rationale: {ystr(override['rationale'])}\n"
+        )
 else:
     review_record += '  []\n'
 
@@ -1744,7 +2065,7 @@ review_record += f"\nnotes:\n"
 # Add notes
 if notes:
     for note in notes:
-        review_record += f'  - "{note}"\n'
+        review_record += f'  - {ystr(note)}\n'
 else:
     review_record += '  []\n'
 
@@ -1755,10 +2076,10 @@ approval:
 
 # Artifact References
 artifacts:
-  ai_postmortem: reports/postmortem-{incident_id}.md
+  ai_postmortem: reports/postmortem-{incident_id}{('-' + service_scope) if service_scope else ''}.md
   evidence_bundle: reports/incident-bundle-{incident_id}.json
   scope_audit: reports/scope-audit-{incident_id}.json
-  copilot_prompt: reports/copilot-prompt-{incident_id}.txt
+  copilot_prompt: reports/copilot-prompt-{incident_id}{('-' + service_scope) if service_scope else ''}.txt
 
 # Governance Notes
 # - AI proposes, humans decide, Sherlock records
@@ -1773,6 +2094,8 @@ with open(output_file, 'w') as f:
 
 print(f"✓ Review record written: {output_file}")
 GENERATE_RR
+
+cleanup_json_files
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

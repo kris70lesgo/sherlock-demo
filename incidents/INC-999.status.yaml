@@ -2,7 +2,7 @@
 # Purpose: Gate pipeline behavior based on real-world incident progression
 # Rule: Human sets state. System enforces. AI never changes state.
 
-incident_id: INC-123
+incident_id: INC-999
 
 status: POSTMORTEM_COMPLETE
 # Allowed values:
@@ -17,40 +17,20 @@ set_by:
   role: "Incident Commander"
   identifier: "demo-user"
 
-updated_at: "2026-02-15T05:05:29Z"
+updated_at: "2026-02-15T05:32:01Z"
 
 history:
   - state: OPEN
     set_by: "sherlock-demo"
-    timestamp: "2026-02-14T15:11:08Z"
+    timestamp: "2026-02-15T05:32:01Z"
     notes: "Investigation started"
   - state: RESOLVED
     set_by: "sherlock-demo"
-    timestamp: "2026-02-14T15:12:28Z"
+    timestamp: "2026-02-15T05:32:01Z"
     notes: "Investigation complete, incident resolved"
   - state: POSTMORTEM_COMPLETE
     set_by: "sherlock-demo"
-    timestamp: "2026-02-14T15:12:29Z"
-    notes: "Postmortem finalized and approved"
-  - state: OPEN
-    set_by: "sherlock-demo"
-    timestamp: "2026-02-15T00:00:00Z"
-    notes: "Reset to allow demo rerun"
-  - state: RESOLVED
-    set_by: "sherlock-demo"
-    timestamp: "2026-02-15T05:04:50Z"
-    notes: "Investigation complete, incident resolved"
-  - state: OPEN
-    set_by: "sherlock-demo"
-    timestamp: "2026-02-15T05:06:30Z"
-    notes: "Reset to allow demo rerun after non-interactive block"
-  - state: RESOLVED
-    set_by: "sherlock-demo"
-    timestamp: "2026-02-15T05:05:29Z"
-    notes: "Investigation complete, incident resolved"
-  - state: POSTMORTEM_COMPLETE
-    set_by: "sherlock-demo"
-    timestamp: "2026-02-15T05:05:29Z"
+    timestamp: "2026-02-15T05:32:01Z"
     notes: "Postmortem finalized and approved"
 
 notes:

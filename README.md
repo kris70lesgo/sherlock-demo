@@ -36,3 +36,41 @@ It’s an **incident lifecycle system with AI inside it**.
 
 ```bash
 ./sherlock investigate INC-123
+```
+
+## ✅ Fully Successful Demo Run (Append-Only Safe)
+
+If you want a full end-to-end run that writes organizational memory (Phase 5)
+without hitting the append-only guard, use a fresh incident ID:
+
+```bash
+./sherlock investigate INC-999
+```
+
+## 🔐 Copilot Auth vs Offline Mode
+
+Sherlock uses GitHub Copilot CLI for Phase 3 reasoning when authenticated.
+If Copilot is not authenticated, Sherlock falls back to an offline post-mortem
+generator so the demo can still complete.
+
+To authenticate Copilot:
+
+```bash
+gh auth login
+```
+
+## 🧪 Non-Interactive Demo Runs
+
+When running non-interactively (e.g., CI), Sherlock auto-selects:
+- Decision: `ACCEPT`
+- Reviewer: `sherlock-demo` / `Incident Commander` / `demo-user`
+
+This allows the demo to complete without blocking on prompts.
+
+## 🔧 Optional Dependency (Service Ownership Validation)
+
+Service ownership checks use PyYAML. If it isn't installed, validation is skipped in demo mode.
+
+```bash
+pip install pyyaml
+```

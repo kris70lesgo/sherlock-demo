@@ -1,6 +1,6 @@
 {
-  "incident_id": "INC-123",
-  "provenance_generated": "2026-02-14T15:12:29.327233Z",
+  "incident_id": "INC-999",
+  "provenance_generated": "2026-02-15T05:32:02.090279Z",
   "sherlock_version": "1.0.0",
   "reasoning_protocol": {
     "type": "hypothesis-based",
@@ -55,8 +55,8 @@
   },
   "external_verifiability": {
     "reasoning_manifest": "adapters/trust-verification/reasoning-manifest.json",
-    "provenance_record": "adapters/trust-verification/provenance-INC-123.json",
-    "trust_report": "phase7/trust-report-INC-123.md",
+    "provenance_record": "adapters/trust-verification/provenance-INC-999.json",
+    "trust_report": "phase7/trust-report-INC-999.md",
     "all_artifact_hashes_computed": true
   },
   "disclaimer": "This provenance record cryptographically binds this incident to a specific reasoning configuration. Any artifact modification will change hashes, making tampering detectable."

@@ -1,0 +1,48 @@
+# Incident Index Record: INC-999
+
+incident_id: INC-999
+timestamp: 2026-02-15T05:32:01Z
+
+service: storage_service
+environment: demo
+
+final_root_cause:
+  summary: "Application memory growth from unbounded request accumulation"
+  category: Application
+
+decision:
+  type: ACCEPTED  # ACCEPTED | MODIFIED | REJECTED
+  reviewer_role: Incident Commander"  # Incident Commander | SRE | Maintainer
+  final_confidence: 55
+
+ai_vs_human:
+  ai_confidence: 55
+  human_confidence: 55
+  delta: 0
+
+signals:
+  - memory_growth
+  - error_rate_spike
+  - latency_degradation
+  - crash_loop
+
+hypotheses:
+  total: 3
+  ruled_out: 2
+
+remediation:
+  promised:
+    - "Add memory growth alerts with lower thresholds."
+    - "Add request volume and latency metrics to evidence scope."
+    - "Audit in-memory caches for bounded growth patterns."
+  status:
+    - action: "Add memory growth alerts with lower thresholds."
+      completed: false
+    - action: "Add request volume and latency metrics to evidence scope."
+      completed: false
+    - action: "Audit in-memory caches for bounded growth patterns."
+      completed: false
+
+artifacts:
+  review_record: reports/review-record-INC-999.yaml
+  postmortem: reports/postmortem-INC-999.md

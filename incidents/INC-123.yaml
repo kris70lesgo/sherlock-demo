@@ -1,0 +1,54 @@
+# Incident Index Record: INC-123
+
+incident_id: INC-123
+timestamp: 2026-02-14T15:12:29Z
+
+service: storage_service
+environment: demo
+
+final_root_cause:
+  summary: "Memory Leak in Deployed Code"
+  category: Application
+
+decision:
+  type: ACCEPTED  # ACCEPTED | MODIFIED | REJECTED
+  reviewer_role: SRE"  # Incident Commander | SRE | Maintainer
+  final_confidence: 70
+
+ai_vs_human:
+  ai_confidence: 70
+  human_confidence: 70
+  delta: 0
+
+signals:
+  - memory_growth
+  - error_rate_spike
+  - latency_degradation
+  - crash_loop
+
+hypotheses:
+  total: 5
+  ruled_out: 3
+
+remediation:
+  promised:
+    - "[X] Service crashed and stopped accepting traffic at 23:17:58Z"
+    - "[X] Incident contained within 5 minutes"
+    - "**Code Review:** Analyze commit a02622fb for unbounded allocations, collection growth, or resource l"
+    - "**Memory Profiling:** Run heap dumps and allocation traces in isolated environment"
+    - "**Rollback Validation:** Confirm previous version (pre-v2.8.1) does not exhibit memory growth"
+  status:
+    - action: "[X] Service crashed and stopped accepting traffic at 23:17:58Z"
+      completed: false
+    - action: "[X] Incident contained within 5 minutes"
+      completed: false
+    - action: "**Code Review:** Analyze commit a02622fb for unbounded allocations, collection growth, or resource l"
+      completed: false
+    - action: "**Memory Profiling:** Run heap dumps and allocation traces in isolated environment"
+      completed: false
+    - action: "**Rollback Validation:** Confirm previous version (pre-v2.8.1) does not exhibit memory growth"
+      completed: false
+
+artifacts:
+  review_record: reports/review-record-INC-123.yaml
+  postmortem: reports/postmortem-INC-123.md

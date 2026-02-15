@@ -1,6 +1,6 @@
-# Trust Report: INC-123
+# Trust Report: INC-999
 
-**Generated:** 2026-02-14T15:12:29.327233Z  
+**Generated:** 2026-02-15T05:32:02.090279Z  
 **Sherlock Version:** 1.0.0  
 **Service:** storage_service  
 **Category:** Application  
@@ -114,7 +114,7 @@ Executed Phases: 1, 2, 3, 4, 5, 6, 7
 Anyone can verify this incident's processing by:
 
 1. **Checking the reasoning manifest:** `adapters/trust-verification/reasoning-manifest.json`
-2. **Reviewing this provenance record:** `adapters/trust-verification/provenance-INC-123.json`
+2. **Reviewing this provenance record:** `adapters/trust-verification/provenance-INC-999.json`
 3. **Recomputing artifact hashes:** Compare against values in provenance record
 4. **Inspecting phase outputs:** All artifacts are human-readable and git-trackable
 
@@ -132,14 +132,14 @@ This provenance record cryptographically binds this incident to a specific reaso
 
 ```bash
 # Verify artifact hashes
-shasum -a 256 reports/incident-bundle-INC-123.json
-shasum -a 256 reports/scope-audit-INC-123.json
-shasum -a 256 reports/post-mortem-INC-123.md
-shasum -a 256 reports/review-record-INC-123.yaml
-shasum -a 256 incidents/INC-123.yaml
+shasum -a 256 reports/incident-bundle-INC-999.json
+shasum -a 256 reports/scope-audit-INC-999.json
+shasum -a 256 reports/post-mortem-INC-999.md
+shasum -a 256 reports/review-record-INC-999.yaml
+shasum -a 256 incidents/INC-999.yaml
 
 # Compare against provenance record
-cat adapters/trust-verification/provenance-INC-123.json
+cat adapters/trust-verification/provenance-INC-999.json
 
 # Verify reasoning manifest hasn't changed
 shasum -a 256 adapters/trust-verification/reasoning-manifest.json

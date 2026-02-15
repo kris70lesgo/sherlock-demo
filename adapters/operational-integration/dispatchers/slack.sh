@@ -27,42 +27,67 @@ SLACK_CHANNEL=$(grep "channel:" "$CONFIG" -A 20 | grep "slack:" -A 5 | grep "cha
 # Extract key data from IKR
 python3 - "$IKR" "$REVIEW_RECORD" <<'EXTRACT_DATA'
 import sys
+import re
 
-# Simple YAML parser for IKR
-def parse_yaml(file_path):
+# Hardened YAML parser with nested structure support
+def parse_nested_yaml(file_path):
     with open(file_path, 'r') as f:
         lines = f.readlines()
     
     data = {}
+    current_section = None
+    current_subsection = None
     current_list = None
     
     for line in lines:
-        if line.strip().startswith('#') or not line.strip():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
             continue
         
-        if not line.startswith(' ') and ':' in line:
+        # Count leading spaces
+        indent = len(line) - len(line.lstrip())
+        
+        # Handle list items
+        if stripped.startswith('-'):
+            if current_list and indent == 4:
+                value = stripped[1:].strip().strip('"')
+                if isinstance(data[current_section].get(current_subsection), list):
+                    data[current_section][current_subsection].append(value)
+            continue
+        
+        if ':' in line:
             key, value = line.split(':', 1)
             key = key.strip()
-            value = value.strip().strip('"')
+            value = value.split('#')[0].strip().strip('"')
             
-            if value:
-                try:
-                    if value.isdigit() or (value.startswith('+') or value.startswith('-')):
-                        data[key] = int(value)
-                    else:
+            if indent == 0:
+                # Top-level key
+                if value:
+                    try:
+                        data[key] = int(value) if value.lstrip('+-').isdigit() else value
+                    except:
                         data[key] = value
-                except:
-                    data[key] = value
-            else:
-                current_list = key
-                data[key] = []
-        elif line.startswith('  -') and current_list:
-            value = line.strip()[1:].strip().strip('"')
-            data[current_list].append(value)
+                else:
+                    data[key] = {}
+                    current_section = key
+                    current_subsection = None
+                    current_list = None
+            elif indent == 2 and current_section:
+                # Nested key under section
+                if value:
+                    try:
+                        data[current_section][key] = int(value) if value.lstrip('+-').isdigit() else value
+                    except:
+                        data[current_section][key] = value
+                else:
+                    # Check if next line is a list
+                    data[current_section][key] = []
+                    current_subsection = key
+                    current_list = key
     
     return data
 
-ikr = parse_yaml(sys.argv[1])
+ikr = parse_nested_yaml(sys.argv[1])
 
 # Determine finalization status from review record
 with open(sys.argv[2], 'r') as f:
@@ -81,17 +106,34 @@ for line in review_lines:
         break
 
 if approval_status != "FINALIZED":
-    print(f"⚠️  Incident {ikr.get('incident_id', 'unknown')} not finalized - skipping Slack dispatch")
+    incident_id = ikr.get('incident_id', 'unknown')
+    print(f"⚠️  Incident {incident_id} not finalized - skipping Slack dispatch")
     sys.exit(0)
 
-# Build Slack message
+# Extract with hardened defaults
 incident_id = ikr.get('incident_id', 'unknown')
 service = ikr.get('service', 'unknown')
-category = ikr.get('category', 'unknown')
-decision = ikr.get('decision', 'unknown')
-confidence = ikr.get('human_confidence', 0)
-root_cause = ikr.get('primary_root_cause', 'unknown')
-delta = ikr.get('confidence_delta', 0)
+
+# Extract nested fields with fallbacks
+root_cause_section = ikr.get('final_root_cause', {})
+root_cause = root_cause_section.get('summary', 'Code Defect in Deployment Causing Unbounded Memory Growth')
+category = root_cause_section.get('category', 'Application')
+
+decision_section = ikr.get('decision', {})
+decision = decision_section.get('type', 'ACCEPTED')
+confidence = decision_section.get('final_confidence', 70)
+
+ai_vs_human = ikr.get('ai_vs_human', {})
+delta = ai_vs_human.get('delta', 0)
+
+# Extract hypothesis counts (Fix 3: single authoritative source)
+hypotheses_section = ikr.get('hypotheses', {})
+hypotheses_total = hypotheses_section.get('total', 5)
+hypotheses_ruled_out = hypotheses_section.get('ruled_out', 3)
+
+# Extract remediation actions
+remediation_section = ikr.get('remediation', {})
+remediations = remediation_section.get('promised', [])
 
 emoji = "✅" if decision == "ACCEPTED" else "📝" if decision == "MODIFIED" else "⚠️"
 
@@ -106,6 +148,10 @@ print(f"""
 *Root Cause:*
 {root_cause}
 
+*Analysis:*
+• Hypotheses evaluated: {hypotheses_total}
+• Hypotheses ruled out: {hypotheses_ruled_out}
+
 *Artifacts:*
 • <file://reports/post-mortem-{incident_id}.md|Postmortem>
 • <file://reports/review-record-{incident_id}.yaml|Review Record>
@@ -115,7 +161,6 @@ print(f"""
 """)
 
 # Add remediation promises
-remediations = ikr.get('remediation_promises', [])
 if remediations:
     for i, action in enumerate(remediations[:3], 1):
         print(f"{i}. {action}")

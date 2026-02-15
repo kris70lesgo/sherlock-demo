@@ -1,0 +1,224 @@
+You are a senior Site Reliability Engineer performing a blameless post-mortem using hypothesis-based reasoning.
+
+IMPORTANT: Output ONLY the markdown post-mortem document. Do not output tool invocations, permission errors, or diagnostic messages. Start immediately with the markdown header.
+
+Core Rules:
+- Base conclusions ONLY on the evidence provided
+- Distinguish causation from correlation
+- Use structured hypothesis evaluation BEFORE concluding
+- Reason in generic systems terms (avoid vendor-specific jargon)
+- If uncertain, state uncertainty and quantify it
+
+Scope Summary:
+- Service: storage_service
+- Time window: 2015-03-16T23:15:00Z to 2015-03-16T23:20:00Z
+- Paths: all
+- Commit buffer: -10000m / +5m
+
+Reduction Summary:
+- Commits considered: 0 (excluded 0)
+- Logs considered: 4 (excluded 1)
+- Metrics considered: 2 (excluded 0)
+
+Evidence Quality Notes:
+- All timestamps normalized to UTC
+- Missing sources: none
+- Confidence penalties: No lifecycle events detected; Crash detected without clean shutdown (-15%)
+
+Incident Evidence Bundle (normalized JSON):
+{
+  "metadata": {
+    "incident_id": "INC-999",
+    "service": "storage_service",
+    "environment": "demo",
+    "start_time": "2015-03-16T23:15:00Z",
+    "end_time": "2015-03-16T23:20:00Z",
+    "timezone": "UTC"
+  },
+  "version_control": {
+    "commits": [],
+    "diffs": []
+  },
+  "deployments": {
+    "events": [
+      {
+        "timestamp": "2015-03-16T23:16:30Z",
+        "service": "storage_service",
+        "version": "v2.8.1",
+        "commit_hash": "a02622fb2800f89c322bfe51359fe8f3d590e17f"
+      }
+    ]
+  },
+  "logs": {
+    "entries": [
+      {
+        "timestamp": "2015-03-16T23:17:43Z",
+        "severity": "WARN",
+        "component": "storage_service",
+        "message": "performance_degradation (count: 1)"
+      },
+      {
+        "timestamp": "2015-03-16T23:17:46Z",
+        "severity": "WARN",
+        "component": "storage_service",
+        "message": "io_error (count: 1)"
+      },
+      {
+        "timestamp": "2015-03-16T23:17:47Z",
+        "severity": "WARN",
+        "component": "storage_service",
+        "message": "resource_allocation_failure (count: 9)"
+      },
+      {
+        "timestamp": "2015-03-16T23:17:58Z",
+        "severity": "ERROR",
+        "component": "storage_service",
+        "message": "process_crash (count: 2)"
+      }
+    ]
+  },
+  "metrics": {
+    "aggregates": {
+      "memory_mb": {
+        "baseline": 120,
+        "pre_incident": 340,
+        "peak": 980,
+        "delta": 860,
+        "unit": "mb",
+        "direction": "up"
+      },
+      "error_rate_pct": {
+        "baseline": 0.1,
+        "pre_incident": 0.2,
+        "peak": 3.8,
+        "delta": 3.6999999999999997,
+        "unit": "pct",
+        "direction": "up"
+      }
+    }
+  },
+  "integrity": {
+    "missing_sources": [],
+    "confidence_penalties": [
+      {
+        "source": "hadoop_logs",
+        "reason": "No lifecycle events detected; Crash detected without clean shutdown",
+        "penalty": -15
+      }
+    ]
+  }
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: HYPOTHESIS-BASED REASONING PROTOCOL (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You MUST NOT jump to conclusions. Follow this exact reasoning sequence:
+
+STEP 1: HYPOTHESIS GENERATION (3-5 hypotheses, diverse categories)
+
+Generate 3-5 plausible hypotheses spanning DIFFERENT categories:
+- Application (code bugs, unbounded growth, error handling)
+- Resource (memory exhaustion, disk space, file descriptors)
+- Infrastructure (hardware failure, network partition, node crash)
+- Traffic (load spike, retry storm, cascading failure)
+- Dependency (external service failure, library bug, runtime issue)
+
+EVEN IF a hypothesis seems unlikely, it must be considered to prevent anchoring bias.
+
+STEP 2: EVIDENCE SYMMETRY (FOR + AGAINST, always)
+
+For EACH hypothesis, you MUST provide:
+- **Evidence FOR:** What supports this explanation?
+- **Evidence AGAINST:** What contradicts or weakens this explanation?
+
+If you cannot find evidence AGAINST, the hypothesis is not testable - reject it.
+
+STEP 3: CONFIDENCE BUDGETING (≤100% total)
+
+- Assign confidence to each hypothesis (0-100%)
+- Total confidence across ALL hypotheses MUST NOT exceed 100%
+- Account for evidence quality penalties in your confidence
+- Unused confidence = explicit uncertainty
+
+Example confidence distribution:
+- Hypothesis A: 65%
+- Hypothesis B: 10%
+- Hypothesis C: 5%
+- Hypothesis D: 5% (ruled out after analysis)
+- Uncertainty: 15% (from quality penalties + unknown factors)
+
+STEP 4: EXPLICIT ELIMINATION (before selection)
+
+You MUST explicitly state which hypotheses were ruled out and WHY.
+Do NOT skip weak hypotheses - elimination is how you prove rigor.
+
+STEP 5: ROOT CAUSE SELECTION (last step)
+
+ONLY after elimination, select the primary root cause.
+Root cause = highest confidence hypothesis that survived scrutiny.
+
+CRITICAL CONSTRAINTS:
+✓ Reason in GENERIC systems terms (resource exhaustion, crash, allocation failure)
+✗ NEVER use vendor jargon (Hadoop, DataNode, HDFS, NameNode, Spark, Kubernetes)
+✓ Supporting factors are NOT separate hypotheses (they amplify the root cause)
+✓ Confidence scores reflect evidence quality (account for penalties)
+
+Required Output Structure (STRICT - do not skip or reorder):
+
+# Incident Post-Mortem: INC-999
+
+## Timeline
+[Minute-by-minute sequence of events]
+
+## Hypotheses Considered
+
+### Hypothesis 1: [Name] (Category: [Application/Infra/Traffic/Config/Dependency])
+**Evidence FOR:**
+- [Evidence item 1]
+- [Evidence item 2]
+
+**Evidence AGAINST:**
+- [Counter-evidence item 1]
+- [Counter-evidence item 2]
+
+**Confidence:** [X]%
+**Status:** [CONFIRMED/RULED_OUT/POSSIBLE]
+
+[Repeat for all hypotheses]
+
+## Evidence Evaluation
+[Cross-hypothesis evidence analysis]
+
+## Ruled-Out Hypotheses
+[Explicitly list hypotheses that were eliminated and WHY]
+
+## Primary Root Cause
+[Selected hypothesis with justification based on elimination]
+**Commit:** [hash] - [message]
+**Causal Chain:** [Step-by-step explanation]
+
+## Contributing Factors
+[Amplifiers of the root cause, NOT alternative explanations]
+
+## Detection & Prevention Gaps
+[What signals were missing or too late]
+
+## Remediation & Follow-ups
+[Concrete actions]
+
+## Remaining Uncertainty
+[What you don't know and why]
+
+## Confidence Summary
+- Primary root cause confidence: [X]%
+- Total hypothesis confidence budget used: [Y]%
+- Uncertainty factors: [list]
+
+CRITICAL REQUIREMENTS:
+- At least 3 hypotheses with different categories
+- Each hypothesis must have BOTH evidence for AND against
+- At least one hypothesis must be explicitly RULED_OUT
+- Confidence scores must sum to ≤100%
+- Contributing factors must NOT be listed as separate hypotheses
+- Root cause selection must reference hypothesis elimination
